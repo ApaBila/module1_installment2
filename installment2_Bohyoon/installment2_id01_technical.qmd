@@ -20,11 +20,35 @@ options(scipen = 999)
 installment2_id01 <- read.csv("installment2_id01.csv")
 str(installment2_id01)
 summary(installment2_id01)
-# TODO: add Bohyoon's mutate here
+
+installment2_id01 <- installment2_id01 %>%
+  mutate(NAICS = as.factor(NAICS),
+         WomanOwned = as.factor(WomanOwned),
+         FICO = case_when(
+           (300 <= FICO)&(FICO <= 579) ~ "Poor",
+           (580 <= FICO)&(FICO <= 669) ~ "Fair",
+           (670 <= FICO)&(FICO <= 739) ~ "Good",
+           (740 <= FICO)&(FICO <= 799) ~ "Very Good",
+           (800 <= FICO)&(FICO <= 850) ~ "Excellent",
+         ))
+table(installment2_id01$FICO)
+
+table(installment2_id01$NAICS)
+
+par(mfrow=c(1,2))
+plot(installment2_id01$Num_Delinquent, installment2_id01$PRSM)
+plot(installment2_id01$Num_CreditLines, installment2_id01$PRSM)
+
+# TODO: remove or transform to Num_Delinquent/Num_CreditLines
 ```
 
 
+```{r remove_outliers}
+# TODO: outliers
+```
+
 ```{r modeling}
+str(installment2_id01)
 fullmodel <- lm(PRSM ~ ., data = installment2_id01)
 summary(fullmodel)
 
@@ -35,17 +59,29 @@ stress_model <- lm(PRSM ~ Stress, data = installment2_id01)
 summary(stress_model)
 ```
 
-
 ```{r transform}
+#plot(installment2_id01[,c("PRSM", "TotalAmtOwed", "Volume",
+#                          "Stress", "Num_Delinquent", "Num_CreditLines",
+#                          "Months")])
+#plot(log(installment2_id01$Months), installment2_id01$PRSM)
+#plot(installment2_id01$NAICS, as.numeric(installment2_id01$PRSM))
+#plot(fullmodel)
+# y: assumptions on residuals. cant compare AIC etc
+# x: linearity, outlier
 constant <- abs(min(installment2_id01$PRSM)) + 0.01
 fullmodel_shifted <- lm(PRSM + constant ~ ., data = installment2_id01)
 library(MASS)
+# maybe try log
+hist(installment2_id01$PRSM)
+hist(fullmodel$residuals)
 boxcox(fullmodel_shifted, lambda = seq(-2, 2, 0.1))
 library(car)
-boxTidwell(PRSM + constant ~ TotalAmtOwed + Volume + FICO + Stress,
-           data = installment2_id01)
-plot(installment2_id01$PRSM, installment2_id01$FICO^2.5)
-transformedmodel <- lm(PRSM ~ TotalAmtOwed + Volume + FICO^2.5 + Stress,
+#crPlots(fullmodel)
+#boxTidwell(PRSM + constant ~ TotalAmtOwed + Volume + Stress,
+#           data = installment2_id01)
+#plot(installment2_id01$PRSM, installment2_id01$FICO)
+transformedmodel <- lm(PRSM ~ TotalAmtOwed + Volume + FICO + Stress,
            data = installment2_id01)
 summary(transformedmodel)
 ```
+
