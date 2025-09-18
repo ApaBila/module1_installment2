@@ -23,3 +23,5 @@ data = data %>%
 
 model = lm(PRSM ~. , data = data)
 summary(model)
+
+plot(model, which = c(1:3))
