@@ -1,0 +1,51 @@
+---
+title: "STAT 628 Credit Risk Project: Installment 2 (technical)"
+author: "Bohyoon Lee and Salsabila Mahdi"
+date: last-modified
+format: pdf
+geometry:
+  - margin=1in
+---
+
+```{r}
+#| label: setup
+#| echo: false
+#| warning: false
+
+library(dplyr)
+options(scipen = 999)
+```
+
+```{r load_clean}
+installment2_id01 <- read.csv("installment2_id01.csv")
+str(installment2_id01)
+summary(installment2_id01)
+# TODO: add Bohyoon's mutate here
+```
+
+
+```{r modeling}
+fullmodel <- lm(PRSM ~ ., data = installment2_id01)
+summary(fullmodel)
+
+stepmodel <- step(fullmodel)
+summary(stepmodel)
+
+stress_model <- lm(PRSM ~ Stress, data = installment2_id01)
+summary(stress_model)
+```
+
+
+```{r transform}
+constant <- abs(min(installment2_id01$PRSM)) + 0.01
+fullmodel_shifted <- lm(PRSM + constant ~ ., data = installment2_id01)
+library(MASS)
+boxcox(fullmodel_shifted, lambda = seq(-2, 2, 0.1))
+library(car)
+boxTidwell(PRSM + constant ~ TotalAmtOwed + Volume + FICO + Stress,
+           data = installment2_id01)
+plot(installment2_id01$PRSM, installment2_id01$FICO^2.5)
+transformedmodel <- lm(PRSM ~ TotalAmtOwed + Volume + FICO^2.5 + Stress,
+           data = installment2_id01)
+summary(transformedmodel)
+```

@@ -1,0 +1,68 @@
+---
+title: "STAT 628 Credit Risk Project: Installment 2 (technical)"
+author: "Bohyoon Lee and Salsabila Mahdi"
+date: last-modified
+format: pdf
+geometry:
+  - margin=1in
+---
+
+
+You should submit a 2-page document with your executive summary on page 1, and your
+reference & contributions on page 2.
+The executive summary should present your conclusions and be free of technical jargon, figures,
+graphs, and code. In other words, you should describe and interpret your results and should not
+describe the process by which you obtained your results. The executive summary should convey the
+main conclusions of your modeling efforts in language that is accessible to someone who may not
+have taken STAT 628 before. Your executive summary should
+• List the factors that drive substantial variation in PRSM. You should not exhaustively list
+all variables that have a statistically discernible effect. It is possible that a predictor has a
+statistically discernible effect but not a practically relevant (significant) one.
+• Introduce a baseline potential borrower by selecting values of each predictor in your final
+model. Report the predicted PRSM (along with relevant uncertainty intervals) of your baseline
+borrower.
+• Describe the main drivers of PRSM and indicate which are associated with greater or lesser
+credit risk relative to the baseline.
+• Use conveniently rounded numbers when forming a baseline borrower and highlighting changes
+relative to that baseline. Similarly, 1 unit changes in some predictors may not be that relevant;
+consider using more realistic or practically relevant changes.
+Your executive summary should not be longer than 1 page. Do not adjust the page margins or use
+an extremely small font size to achieve this. 
+
+```{r}
+#| label: setup
+#| echo: false
+#| warning: false
+
+library(dplyr)
+library(knitr)
+options(scipen = 999)
+knitr::opts_chunk$set(
+    echo = TRUE, tidy = TRUE, warning = FALSE, message = FALSE, fig.width=10,
+    tidy.opts = list(width.cutoff=70, arrow=TRUE, indent=2),
+    fig.height = 3.375, fig.width = 6
+)
+```
+
+```{r load_clean}
+installment2_id01 <- read.csv("installment2_id01.csv")
+# TODO: add Bohyoon's mutate here
+```
+
+```{r transform}
+```
+
+```{r modeling}
+# TODO: after deciding the model, print the most easy to understand
+# version of it. Table? Just the model?
+fullmodel <- lm(PRSM ~ ., data = installment2_id01)
+kable(summary(fullmodel)$coefficients, digits = 2)
+
+stepmodel <- step(fullmodel, trace = 0)
+kable(summary(stepmodel)$coefficients, digits = 2)
+
+stress_model <- lm(PRSM ~ Stress, data = installment2_id01)
+kable(summary(stress_model)$coefficients, digits = 2)
+```
+
+
