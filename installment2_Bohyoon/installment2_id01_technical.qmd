@@ -56,7 +56,8 @@ plot(installment2_id01$Num_CreditLines, installment2_id01$PRSM)
 ```{r remove_outliers}
 # remove 11 outliers observed in the plot (abs(residual)>=1)
 installment2_id01_clean = installment2_id01 %>% 
-  filter(abs(residual)<=1) # clean data (use this!!)
+  filter(abs(residual)<=1) %>% 
+  select(-residual)# clean data (use this!!)
 
 model_clean = lm(PRSM ~. , data = installment2_id01_clean) 
 

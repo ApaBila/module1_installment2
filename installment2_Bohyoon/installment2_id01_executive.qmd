@@ -58,13 +58,16 @@ installment2_id01 = installment2_id01 %>%
            (670 <= FICO)&(FICO <= 739) ~ "Good",
            (740 <= FICO)&(FICO <= 799) ~ "Very Good",
            (800 <= FICO)&(FICO <= 850) ~ "Excellent",
-         ),
-         p_delinquent = Num_Delinquent/Num_CreditLines)
+         ))
 
 model = lm(PRSM ~. , data = installment2_id01)
 installment2_id01$residual=residuals(model)
 
 plot(model,1) # observed 11 outliers whose residuals >= 1 or <= -1
+
+installment2_id01_clean = installment2_id01 %>% 
+  filter(abs(residual)<=1) %>% 
+  select(-residual)
 ```
 
 ```{r transform}

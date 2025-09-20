@@ -28,13 +28,18 @@ plot(model,1)
 # remove 11 outliers observed in the plot (abs(residual)>=1)
 installment2_id01_clean = installment2_id01 %>% 
   filter(abs(residual)<=1) %>% 
-  select(-residual)
+  select(-residual) 
 
 model_clean = lm(PRSM ~. , data = installment2_id01_clean)
 
 plot(model_clean,1)
 
+summary(model_clean)
+
+summary(installment2_id01_clean$PRSM)
+hist(installment2_id01_clean$PRSM)
+
 # 1. Model with p_delinquent ####
 
-model_clean_1 = model_clean %>% 
-  mutate()
+installment2_id01_clean_1 = installment2_id01_clean %>% 
+  mutate(p_delinquent = Num_Delinquent/Num_CreditLines)
