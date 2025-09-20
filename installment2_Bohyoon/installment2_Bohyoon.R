@@ -17,8 +17,7 @@ installment2_id01 = installment2_id01 %>%
            (670 <= FICO)&(FICO <= 739) ~ "Good",
            (740 <= FICO)&(FICO <= 799) ~ "Very Good",
            (800 <= FICO)&(FICO <= 850) ~ "Excellent",
-         ),
-         p_delinquent = Num_Delinquent/Num_CreditLines)
+         ))
 
 
 model = lm(PRSM ~. , data = installment2_id01)
@@ -28,8 +27,14 @@ plot(model,1)
 
 # remove 11 outliers observed in the plot (abs(residual)>=1)
 installment2_id01_clean = installment2_id01 %>% 
-  filter(abs(residual)<=1)
+  filter(abs(residual)<=1) %>% 
+  select(-residual)
 
 model_clean = lm(PRSM ~. , data = installment2_id01_clean)
 
 plot(model_clean,1)
+
+# 1. Model with p_delinquent ####
+
+model_clean_1 = model_clean %>% 
+  mutate()
