@@ -61,49 +61,83 @@ installment2_id01_clean = installment2_id01 %>%
 
 model_clean = lm(PRSM ~. , data = installment2_id01_clean) 
 
-plot(model_clean,1)
+plot(model_clean) # these look much better! but perhaps discuss different outlier removal techniques
 
 ```
 
 ```{r modeling}
-str(installment2_id01)
-fullmodel <- lm(PRSM ~ ., data = installment2_id01)
+library(ModelMetrics)
+fullmodel <- lm(PRSM ~ ., data = installment2_id01_clean)
 summary(fullmodel)
+rmse(fullmodel$fitted.values, installment2_id01_clean$PRSM) # 0.1029151
+# RMSE much smaller before cleaning
+# but R-sq bigger. Perhaps a "not overfitting outliers" effect?
 
-stepmodel <- step(fullmodel)
+stepmodel <- step(fullmodel, trace = 0, direction = "both")
 summary(stepmodel)
+rmse(stepmodel$fitted.values, installment2_id01_clean$PRSM)
 
-stress_model <- lm(PRSM ~ Stress, data = installment2_id01)
-summary(stress_model)
+stress_model <- lm(PRSM ~ Stress, data = installment2_id01_clean)
+#summary(stress_model)
+rmse(stress_model$fitted.values, installment2_id01_clean$PRSM)
 
-library(glmnet)
-cv_lasso <- cv.glmnet(x = installment2_id01[,-c(1)], y = installment2_id01[,c(1)], alpha = 1, nfolds = 10)
+
+library(glmnet) # this errors for Bila # talk about CV in installment2_Bohyoon, which lowest RMSE?
+#cv_lasso <- cv.glmnet(x = installment2_id01[,-c(1)], y = installment2_id01[,c(1)], alpha = 1, nfolds = 10)
 ```
 
 ```{r transform}
-#plot(installment2_id01[,c("PRSM", "TotalAmtOwed", "Volume",
-#                          "Stress", "Num_Delinquent", "Num_CreditLines",
-#                          "Months")])
-#plot(log(installment2_id01$Months), installment2_id01$PRSM)
-#plot(installment2_id01$NAICS, as.numeric(installment2_id01$PRSM))
-#plot(fullmodel)
-# y: assumptions on residuals. cant compare AIC etc
-# x: linearity, outlier
-constant <- abs(min(installment2_id01$PRSM)) + 0.01
-fullmodel_shifted <- lm(PRSM + constant ~ ., data = installment2_id01)
-summary(fullmodel_shifted)
+# NOTE: the below is probably not necessary, y doesn't need to be transformed
+# boxcox basically at 1 confirms this
 library(MASS)
-# maybe try log
-hist(installment2_id01$PRSM)
 hist(fullmodel$residuals)
-boxcox(fullmodel_shifted, lambda = seq(-2, 2, 0.1))
+hist(installment2_id01_clean$PRSM)
+boxcox(fullmodel, lambda = seq(-2, 2, 0.1))
+
+
+# Predictor Variable Transformation Check
+plot(installment2_id01_clean[,c("PRSM", "TotalAmtOwed", "Volume",
+                          "Stress", "Num_Delinquent", "Num_CreditLines",
+                          "Months")])
+# Though there aren't outlier residuals, there are still variable outliers.
 library(car)
-#crPlots(fullmodel)
-#boxTidwell(PRSM + constant ~ TotalAmtOwed + Volume + Stress,
-#           data = installment2_id01)
-#plot(installment2_id01$PRSM, installment2_id01$FICO)
-transformedmodel <- lm(PRSM ~ TotalAmtOwed + Volume + FICO + Stress,
-           data = installment2_id01)
+crPlots(fullmodel) 
+# after outlier removal, all look pretty linear to me except Months
+# this matches hint 1 of the assignment
+crPlots(lm(PRSM ~ Months, data = installment2_id01_clean))
+
+
+# Transform Months Model
+# boxTidwell(PRSM ~ TotalAmtOwed + Volume + Stress + Num_Delinquent + Num_CreditLines + Months + p_delinquent,
+#           data = installment2_id01_clean)
+# fails: multicol
+numeric_predictors <- installment2_id01_clean[, c("TotalAmtOwed", "Volume", "Stress", 
+                                                 "Num_Delinquent", "Num_CreditLines", 
+                                                 "Months", "p_delinquent")]
+cor_matrix <- cor(numeric_predictors); print(cor_matrix)
+model_for_vif <- lm(PRSM ~ TotalAmtOwed + Volume + Stress + Num_Delinquent + 
+                           Num_CreditLines + Months + p_delinquent, 
+                           data = installment2_id01_clean)
+
+vif(model_for_vif)
+boxTidwell(PRSM ~ TotalAmtOwed + Volume + Stress + Months + p_delinquent,
+          data = installment2_id01_clean)
+crPlots(lm(PRSM ~ p_delinquent, data = installment2_id01_clean)) # hm p_delinquent alone doesn't look great
+
+transformedmodel <- lm(PRSM ~ FICO + TotalAmtOwed + Volume + Stress + Num_Delinquent + Num_CreditLines +
+                         p_delinquent + WomanOwned + CorpStructure + NAICS + 1/Months,
+                       data = installment2_id01_clean)
 summary(transformedmodel)
+rmse(transformedmodel$fitted.values, installment2_id01_clean$PRSM) # 0.1035794
+
+# without num_delinq etc
+transformedmodel <- lm(PRSM ~ FICO + TotalAmtOwed + Volume + Stress +
+                         p_delinquent + WomanOwned + CorpStructure + NAICS + 1/Months,
+                       data = installment2_id01_clean)
+summary(transformedmodel)
+rmse(transformedmodel$fitted.values, installment2_id01_clean$PRSM) # 0.1036424
+
+# hmm doesn't improve the model by much at all
+
 ```
 
