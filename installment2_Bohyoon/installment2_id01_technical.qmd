@@ -24,7 +24,7 @@ summary(installment2_id01)
 # make NAICS, WomanOwned, FICO categorical variables
 # add the chance of delinquency
 installment2_id01 = installment2_id01 %>%
-  mutate(NAICS = as.factor(substr(NAICS, 1, 3)), # TODO: talk about simplifying
+  mutate(NAICS = as.factor(substr(NAICS, 1, 6)), # TODO: talk about simplifying
          WomanOwned = as.factor(WomanOwned),
          FICO = case_when(
            (300 <= FICO)&(FICO <= 579) ~ "Poor",
@@ -54,12 +54,22 @@ plot(installment2_id01$Num_CreditLines, installment2_id01$PRSM)
 
 
 ```{r remove_outliers}
+fullmodel <- lm(PRSM ~ FICO + TotalAmtOwed + Stress + 
+                  WomanOwned + CorpStructure + NAICS + I(Months^(-1)) + 
+                  FICO:WomanOwned, data = installment2_id01)
+plot(fullmodel,1)
+installment2_id01$residual=residuals(fullmodel)
+
 # remove 11 outliers observed in the plot (abs(residual)>=1)
 installment2_id01_clean = installment2_id01 %>% 
   filter(abs(residual)<=1) %>% 
   select(-residual)# clean data (use this!!)
 
 model_clean = lm(PRSM ~. , data = installment2_id01_clean) 
+fullmodel <- lm(PRSM ~ FICO + TotalAmtOwed + Stress + 
+                  WomanOwned + CorpStructure + NAICS + I(Months^(-1)) + 
+                  FICO:WomanOwned, data = installment2_id01_clean)
+
 
 plot(model_clean) # these look much better! but perhaps discuss different outlier removal techniques
 # TODO: remove outliers AFTER multicol/best model
@@ -68,7 +78,11 @@ plot(model_clean) # these look much better! but perhaps discuss different outlie
 
 ```{r modeling}
 library(ModelMetrics)
-fullmodel <- lm(PRSM ~ ., data = installment2_id01_clean)
+fullmodel <- lm(PRSM ~ ., data = installment2_id01_clean[,c("PRSM", "FICO", "TotalAmtOwed","Volume","Stress",
+                         "p_delinquent","WomanOwned", "CorpStructure" , "NAICS" , "Months")])
+fullmodel <- lm(PRSM ~ FICO + TotalAmtOwed + Stress + 
+                  WomanOwned + CorpStructure + NAICS + I(Months^(-1)) + 
+                  FICO:WomanOwned, data = installment2_id01_clean)
 summary(fullmodel)
 rmse(fullmodel$fitted.values, installment2_id01_clean$PRSM) # 0.1029151
 # RMSE much smaller before cleaning
@@ -84,17 +98,18 @@ rmse(stress_model$fitted.values, installment2_id01_clean$PRSM)
 
 
 library(glmnet) # this errors for Bila # talk about CV in installment2_Bohyoon, which lowest RMSE?
-#cv_lasso <- cv.glmnet(x = installment2_id01[,-c(1)], y = installment2_id01[,c(1)], alpha = 1, nfolds = 10)
+#cv_lasso <- cv.glmnet(x = installment2_id01_clean[,-c(1)], y = installment2_id01_clean[,c(1)], alpha = 1, nfolds = 10)
 
 # TODO: talk about interaction terms?
-x <- model.matrix(PRSM ~ .^2, data = installment2_id01_clean)[, -1]
+x <- model.matrix(PRSM ~ .^2, data = installment2_id01_clean[,c("PRSM", "FICO", "TotalAmtOwed","Volume","Stress",
+                         "p_delinquent","WomanOwned", "CorpStructure" , "NAICS" , "Months")])[, -1]
 y <- installment2_id01_clean$PRSM
 cv_lasso_interactions <- cv.glmnet(x, y, alpha = 1, nfolds = 10)
 plot(cv_lasso_interactions)
 best_lambda <- cv_lasso_interactions$lambda.min
 lasso_coeffs <- coef(cv_lasso_interactions, s = best_lambda)
 
-threshold <- 0.015
+threshold <- 0.01
 significant_terms <- lasso_coeffs[abs(lasso_coeffs[,1]) > threshold, , drop = FALSE]
 print(significant_terms)
 
@@ -105,6 +120,11 @@ print(significant_terms)
 # FICOFair&Poor:WomanOwned1 => neg!
 # FICOFair&Good:Monts => neg. Hint diminished effect again
 # CorpStructureSole:p_delinquent => neg. p-delinquent harder on Sole owner
+
+library(ggplot2)
+ggplot(data = installment2_id01_clean, aes(x = WomanOwned)) +
+  geom_bar() +
+  facet_wrap(~ FICO)
 
 ```
 
@@ -127,7 +147,7 @@ crPlots(fullmodel)
 # after outlier removal, all look pretty linear to me except Months
 # this matches hint 1 of the assignment
 crPlots(lm(PRSM ~ Months, data = installment2_id01_clean))
-
+crPlots(lm(PRSM~NAICS, data = installment2_id01_clean))
 
 # Transform Months Model
 # boxTidwell(PRSM ~ TotalAmtOwed + Volume + Stress + Num_Delinquent + Num_CreditLines + Months + p_delinquent,
