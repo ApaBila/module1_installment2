@@ -3,6 +3,7 @@ rm(list = ls())
 # install the environment 
 library(tidyverse)
 library(caret)
+library(car)
 
 # read the data
 installment2_id01 = read.csv("installment2_id01.csv")
@@ -29,7 +30,6 @@ plot(model_rm_outliers,1)
 installment2_id01 = installment2_id01 %>% 
   filter(abs(residual)<=1) %>% 
   select(-residual) 
-hist(installment2_id01$PRSM)
 
 # TODO: remove after certain months
 
@@ -204,9 +204,9 @@ summary(model_8)
 model_8_cv = train(PRSM ~ FICO + Stress + I(8*TotalAmtOwed) + WomanOwned + CorpStructure*Months, data = installment2_id01, method ="lm", trControl =cv10)
 print(model_8_cv) # RMSE: 0.1028501           
 
-library(car)
-# boxTidwell (transform)
 
+# boxTidwell (transform)
+?boxTidwell()
 # Evaluation 1 
 
 evaluation_data = read_csv(file = "installment2_evaluation_data.csv")
