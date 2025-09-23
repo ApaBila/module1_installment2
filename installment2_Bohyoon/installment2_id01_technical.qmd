@@ -57,6 +57,9 @@ summary(stepmodel)
 
 stress_model <- lm(PRSM ~ Stress, data = installment2_id01)
 summary(stress_model)
+
+library(glmnet)
+cv_lasso <- cv.glmnet(x = installment2_id01[,-c(1)], y = installment2_id01[,c(1)], alpha = 1, nfolds = 10)
 ```
 
 ```{r transform}
@@ -70,6 +73,7 @@ summary(stress_model)
 # x: linearity, outlier
 constant <- abs(min(installment2_id01$PRSM)) + 0.01
 fullmodel_shifted <- lm(PRSM + constant ~ ., data = installment2_id01)
+summary(fullmodel_shifted)
 library(MASS)
 # maybe try log
 hist(installment2_id01$PRSM)
