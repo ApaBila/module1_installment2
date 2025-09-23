@@ -24,7 +24,7 @@ summary(installment2_id01)
 # make NAICS, WomanOwned, FICO categorical variables
 # add the chance of delinquency
 installment2_id01 = installment2_id01 %>%
-  mutate(NAICS = as.factor(NAICS),
+  mutate(NAICS = as.factor(substr(NAICS, 1, 2)), # TODO: talk about simplifying
          WomanOwned = as.factor(WomanOwned),
          FICO = case_when(
            (300 <= FICO)&(FICO <= 579) ~ "Poor",
@@ -62,6 +62,7 @@ installment2_id01_clean = installment2_id01 %>%
 model_clean = lm(PRSM ~. , data = installment2_id01_clean) 
 
 plot(model_clean) # these look much better! but perhaps discuss different outlier removal techniques
+# TODO: remove outliers AFTER multicol/best model
 
 ```
 
@@ -84,6 +85,27 @@ rmse(stress_model$fitted.values, installment2_id01_clean$PRSM)
 
 library(glmnet) # this errors for Bila # talk about CV in installment2_Bohyoon, which lowest RMSE?
 #cv_lasso <- cv.glmnet(x = installment2_id01[,-c(1)], y = installment2_id01[,c(1)], alpha = 1, nfolds = 10)
+
+# TODO: talk about interaction terms?
+x <- model.matrix(PRSM ~ .^2, data = installment2_id01_clean)[, -1]
+y <- installment2_id01_clean$PRSM
+cv_lasso_interactions <- cv.glmnet(x, y, alpha = 1, nfolds = 10)
+plot(cv_lasso_interactions)
+best_lambda <- cv_lasso_interactions$lambda.min
+lasso_coeffs <- coef(cv_lasso_interactions, s = best_lambda)
+
+threshold <- 0.015
+significant_terms <- lasso_coeffs[abs(lasso_coeffs[,1]) > threshold, , drop = FALSE]
+print(significant_terms)
+
+# TODO: look over hints... 
+# current findings:
+# Stress:WomanOwned1, and LLC but smaller => pos. 
+# WomanOwned1:CorpStructurePartner => pos.
+# FICOFair&Poor:WomanOwned1 => neg!
+# FICOFair&Good:Monts => neg. Hint diminished effect again
+# CorpStructureSole:p_delinquent => neg. p-delinquent harder on Sole owner
+
 ```
 
 ```{r transform}
