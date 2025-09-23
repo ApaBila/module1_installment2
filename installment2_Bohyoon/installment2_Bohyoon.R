@@ -31,13 +31,10 @@ installment2_id01 = installment2_id01 %>%
   select(-residual) 
 hist(installment2_id01$PRSM)
 
-# remove after certain months
-model_rm_long_months = lm(PRSM ~ Months, data = installment2_id01)
-plot(model_rm_long_months,1)
-installment2_id01$fitted=fitted.values(model_rm_long_months)
+# TODO: remove after certain months
+
 installment2_id01 = installment2_id01 %>% 
-  filter(abs(fitted)<=0.84) %>% 
-  select(-fitted) 
+  filter(abs(Months)<=60)
 
 plot(installment2_id01)
 
@@ -206,6 +203,9 @@ summary(model_8)
 
 model_8_cv = train(PRSM ~ FICO + Stress + I(8*TotalAmtOwed) + WomanOwned + CorpStructure*Months, data = installment2_id01, method ="lm", trControl =cv10)
 print(model_8_cv) # RMSE: 0.1028501           
+
+library(car)
+# boxTidwell (transform)
 
 # Evaluation 1 
 

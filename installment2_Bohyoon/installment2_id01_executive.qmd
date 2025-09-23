@@ -7,6 +7,7 @@ geometry:
   - margin=1in
 ---
 
+Bohyoon: removed after certain months, hint4: raw didnt work, hint5: keep looking for transformation methods, hint2,3,6,7: valid, 
 
 You should submit a 2-page document with your executive summary on page 1, and your
 reference & contributions on page 2.

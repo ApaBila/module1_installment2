@@ -24,7 +24,7 @@ summary(installment2_id01)
 # make NAICS, WomanOwned, FICO categorical variables
 # add the chance of delinquency
 installment2_id01 = installment2_id01 %>%
-  mutate(NAICS = as.factor(substr(NAICS, 1, 2)), # TODO: talk about simplifying
+  mutate(NAICS = as.factor(substr(NAICS, 1, 3)), # TODO: talk about simplifying
          WomanOwned = as.factor(WomanOwned),
          FICO = case_when(
            (300 <= FICO)&(FICO <= 579) ~ "Poor",
