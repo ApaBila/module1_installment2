@@ -21,7 +21,9 @@ installment2_id01 <- read.csv("installment2_id01.csv")
 str(installment2_id01)
 summary(installment2_id01)
 
-installment2_id01 <- installment2_id01 %>%
+# make NAICS, WomanOwned, FICO categorical variables
+# add the chance of delinquency
+installment2_id01 = installment2_id01 %>%
   mutate(NAICS = as.factor(NAICS),
          WomanOwned = as.factor(WomanOwned),
          FICO = case_when(
@@ -30,7 +32,16 @@ installment2_id01 <- installment2_id01 %>%
            (670 <= FICO)&(FICO <= 739) ~ "Good",
            (740 <= FICO)&(FICO <= 799) ~ "Very Good",
            (800 <= FICO)&(FICO <= 850) ~ "Excellent",
-         ))
+         ),
+         p_delinquent = Num_Delinquent/Num_CreditLines)
+
+model = lm(PRSM ~. , data = installment2_id01)
+installment2_id01$residual=residuals(model)
+
+plot(model,1) # observed 11 outliers whose residuals >= 1 or <= -1
+
+
+
 table(installment2_id01$FICO)
 
 table(installment2_id01$NAICS)
@@ -39,12 +50,19 @@ par(mfrow=c(1,2))
 plot(installment2_id01$Num_Delinquent, installment2_id01$PRSM)
 plot(installment2_id01$Num_CreditLines, installment2_id01$PRSM)
 
-# TODO: remove or transform to Num_Delinquent/Num_CreditLines
 ```
 
 
 ```{r remove_outliers}
-# TODO: outliers
+# remove 11 outliers observed in the plot (abs(residual)>=1)
+installment2_id01_clean = installment2_id01 %>% 
+  filter(abs(residual)<=1) %>% 
+  select(-residual)# clean data (use this!!)
+
+model_clean = lm(PRSM ~. , data = installment2_id01_clean) 
+
+plot(model_clean,1)
+
 ```
 
 ```{r modeling}

@@ -46,7 +46,28 @@ knitr::opts_chunk$set(
 
 ```{r load_clean}
 installment2_id01 <- read.csv("installment2_id01.csv")
-# TODO: add Bohyoon's mutate here
+
+# make NAICS, WomanOwned, FICO categorical variables
+# add the chance of delinquency
+installment2_id01 = installment2_id01 %>%
+  mutate(NAICS = as.factor(NAICS),
+         WomanOwned = as.factor(WomanOwned),
+         FICO = case_when(
+           (300 <= FICO)&(FICO <= 579) ~ "Poor",
+           (580 <= FICO)&(FICO <= 669) ~ "Fair",
+           (670 <= FICO)&(FICO <= 739) ~ "Good",
+           (740 <= FICO)&(FICO <= 799) ~ "Very Good",
+           (800 <= FICO)&(FICO <= 850) ~ "Excellent",
+         ))
+
+model = lm(PRSM ~. , data = installment2_id01)
+installment2_id01$residual=residuals(model)
+
+plot(model,1) # observed 11 outliers whose residuals >= 1 or <= -1
+
+installment2_id01_clean = installment2_id01 %>% 
+  filter(abs(residual)<=1) %>% 
+  select(-residual)
 ```
 
 ```{r transform}
