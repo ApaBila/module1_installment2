@@ -29,14 +29,12 @@ plot(model_rm_outliers,1)
 # remove 11 outliers observed in the plot (abs(residual)>=1)
 installment2_id01 = installment2_id01 %>% 
   filter(abs(residual)<=1) %>% 
-  select(-residual) 
+  dplyr::select(-residual) 
 
 # TODO: remove after certain months
 
 installment2_id01 = installment2_id01 %>% 
   filter(abs(Months)<=60)
-
-plot(installment2_id01)
 
 # numeric: TotalAmtOwed, Volume, Stress, Num_Delinquent, Num_CreditLines, Months
 
@@ -224,3 +222,4 @@ evaluation_data = evaluation_data %>%
            (800 <= FICO)&(FICO <= 850) ~ "Excellent",
          ))
 
+summary(installment2_id01$PRSM)
