@@ -31,7 +31,7 @@ str(installment2_id01)
 summary(installment2_id01)
 
 # make NAICS, WomanOwned, FICO categorical variables
-# add the chance of delinquency
+
 installment2_id01 = installment2_id01 %>%
   mutate(NAICS = as.factor(substr(NAICS, 1, 6)), # TODO: talk about simplifying
          WomanOwned = as.factor(WomanOwned),
@@ -132,12 +132,12 @@ interact_model = lm(PRSM ~. + FICO:Stress + FICO:WomanOwned + FICO:CorpStructure
                                                     "Months_transformed")])
 summary(interact_model)
 step_interact_model = step(interact_model, trace = 0, direction = "both")
-summary(step_interact_model)
+summary(step_interact_model) # printed R summary of the fitted model
 # Step Model removed NAICS, Num_Delinquent, and Num_CreditLines
 rmse(step_interact_model$fitted.values, installment2_id01_clean$PRSM) # RMSE = 0.09830548
 
 
-# TODO: look over hints... 
+# TODO: look over hints..., multiple regression assumptions, interpretations of the parameters, explanation for how we selected the characteristics of the baseline borrower
 # current findings:
 # Stress:WomanOwned1, and LLC but smaller => pos. 
 # WomanOwned1:CorpStructurePartner => pos.
