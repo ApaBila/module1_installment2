@@ -87,4 +87,15 @@ stress_model <- lm(PRSM ~ Stress, data = installment2_id01)
 kable(summary(stress_model)$coefficients, digits = 2)
 ```
 
+TODO: change all above code to match technical, once technical finalized
 
+Our analysis of credit risk, measured here by the PRSM score, reveals that a borrower's 
+risk profile is not determined by a single characteristic but a complex interplay of characteristics.
+The key characteristics are the business's FICO score, its financial stress level,
+ownership structure (e.g., woman-owned, corporate structure), and months of operation.
+
+TODO: establish baseline borrower
+
+TODO: interpret key effects (direction, size)
+
+TODO: final summary
