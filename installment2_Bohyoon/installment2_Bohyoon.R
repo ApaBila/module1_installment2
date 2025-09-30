@@ -250,6 +250,9 @@ installment2_id01 = installment2_id01 %>%
            (800 <= FICO)&(FICO <= 850) ~ "Excellent",
          ))
 
+
+#We model PRSM with all predictors: FICO, Total Owed, Volume, Stress, Number of Delinquent Lines and Credit Lines, Woman Owned, Corporate Structure, NAICS, Months
+
 fullmodel <- lm(PRSM ~., data = installment2_id01)
 plot(fullmodel,1)
 installment2_id01$residual=residuals(fullmodel)

@@ -21,6 +21,8 @@ library(car)
 library(caret)
 library(glmnet)
 library(ggplot2)
+library(knitr)
+library(gtsummary)
 ```
 
 ## Data Preprocessing
@@ -30,14 +32,14 @@ considered numerical by R.
 
 ```{r load_clean}
 installment2_id01 <- read.csv("installment2_id01.csv")
-str(installment2_id01)
-summary(installment2_id01)
 
 # make NAICS, WomanOwned, FICO categorical variables
 
 installment2_id01 = installment2_id01 %>%
-  mutate(NAICS = as.factor(substr(NAICS, 1, 6)), # TODO: talk about simplifying
+  mutate(NAICS = as.factor(substr(NAICS, 1, 2)), # TODO: talk about simplifying
          WomanOwned = as.factor(WomanOwned),
+#         Num_Delinquent = as.factor(Num_Delinquent),
+#         Num_CreditLines = as.factor(Num_CreditLines),
          FICO = case_when(
            (300 <= FICO)&(FICO <= 579) ~ "Poor",
            (580 <= FICO)&(FICO <= 669) ~ "Fair",
@@ -46,57 +48,67 @@ installment2_id01 = installment2_id01 %>%
            (800 <= FICO)&(FICO <= 850) ~ "Excellent",
          ))
 
+
+installment2_id01 %>% 
+  tbl_summary(
+    statistic = list(
+      all_continuous() ~ c(
+        "{median} ({p25}, {p75})", # Median and Interquartile Range (IQR)
+        "{min}, {max}"            # Minimum and Maximum
+      )
+    ),
+    type = all_continuous() ~ "continuous2" # Ensures multi-line output for continuous variables
+  )
+# TODO: meaningful units?
 ```
-We then notice a few points that are out of distribution and remove them.
+
+We then notice a few points have PRSM values that are out of distribution (less than 0 or greater than 2) and remove them.
 
 ```{r remove_outliers}
-# TODO: rm by variable validity instead?
-clean_PRSM <- subset(installment2_id01, PRSM > 0)
+installment2_id01_clean <- subset(installment2_id01, PRSM > 0 & PRSM < 2)
+installment2_id01_summary = installment2_id01_clean %>% 
+  summarise(`min PRSM` = min(PRSM),
+            `median PRSM` = median(PRSM),
+            `mean PRSM` = mean(PRSM),
+            `max PRSM` = max(PRSM))
 
-fullmodel <- lm(PRSM ~., data = installment2_id01)
-plot(fullmodel,1)
-installment2_id01$residual=residuals(fullmodel)
-
-# remove 11 outliers observed in the plot (abs(residual)>=1)
-installment2_id01_clean = installment2_id01 %>% 
-  filter(abs(residual)<=1) %>% 
-  dplyr::select(-residual) # clean data (use this!!)
-
-model_clean = lm(PRSM ~. , data = installment2_id01_clean) 
-plot(model_clean,1) # these look much better! but perhaps discuss different outlier removal techniques TODO: talk about this!
-
-summary(model_clean)
-
+kable(installment2_id01_summary, digits = 2)
 ```
 
 ## Model Development and Selection
 
 ### Linearity
 
-We assess the linearity of the relationship between PRSM and the predictors 
-using component-residual plots and find that Months shows nonlinearity in a somewhat logarithmic form. 
-We transform Months to approximately its inverse (to be precise, Box-Tidwell suggests -1.1987).
-
 ```{r transform}
 # Months seems to need transformation
-crPlots(model_clean) 
+# crPlots(model_clean) 
 
 # this matches hint 1 of the assignment
 crPlots(lm(PRSM ~ Months, data = installment2_id01_clean))
 
 # Transform Months Model
-boxTidwell(PRSM ~ TotalAmtOwed + Volume + Stress + Num_Delinquent + Num_CreditLines + Months,
+boxTidwell_results <- boxTidwell(PRSM ~ TotalAmtOwed + Volume + Stress + Num_Delinquent + Num_CreditLines + Months,
           data = installment2_id01_clean)
+colnames(boxTidwell_results$result)
+kable(boxTidwell_results$result[,c("MLE of lambda","Pr(>|t|)" )], digits = 2)
 
-transformed_model <- lm(PRSM ~ . - Months + I(Months^(-1.19487)),
+lambda_months <- boxTidwell_results$result[c("Months"),c("MLE of lambda")]
+lambda_num_delinquent <- boxTidwell_results$result[c("Num_Delinquent"),c("MLE of lambda")]
+
+transformed_model <- lm(PRSM ~ . - Months + I(Months^(lambda_months)) - Num_Delinquent + I(Num_Delinquent^(lambda_num_delinquent)),
                        data = installment2_id01_clean)
 # TODO: don't hardcode
 
 summary(transformed_model)
-rmse(transformed_model$fitted.values, installment2_id01_clean$PRSM) # 0.1018195
+rmse(transformed_model$fitted.values, installment2_id01_clean$PRSM)
 
-crPlots(lm(PRSM ~ I(Months^(-1.19487)), data = installment2_id01_clean))
+crPlots(lm(PRSM ~ I(Months^(lambda_months)), data = installment2_id01_clean))
 ```
+
+We assess the linearity of the relationship between PRSM and the predictors 
+using component-residual plots and find that Months shows nonlinearity in a somewhat logarithmic form. 
+We transform Months to approximately its inverse (to be precise, Box-Tidwell suggests `r round(lambda_months, 2)`).
+
 ### Variable and Interaction Selection
 
 We aim to create a parsimonious model that explains the most variance. 
