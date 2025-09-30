@@ -23,7 +23,10 @@ library(glmnet)
 library(ggplot2)
 ```
 
+## Data Preprocessing
 
+We load and preprocess the data to ensure the nonnumerical variables aren't 
+considered numerical by R.
 
 ```{r load_clean}
 installment2_id01 <- read.csv("installment2_id01.csv")
@@ -44,9 +47,12 @@ installment2_id01 = installment2_id01 %>%
          ))
 
 ```
-
+We then notice a few points that are out of distribution and remove them.
 
 ```{r remove_outliers}
+# TODO: rm by variable validity instead?
+clean_PRSM <- subset(installment2_id01, PRSM > 0)
+
 fullmodel <- lm(PRSM ~., data = installment2_id01)
 plot(fullmodel,1)
 installment2_id01$residual=residuals(fullmodel)
@@ -63,6 +69,14 @@ summary(model_clean)
 
 ```
 
+## Model Development and Selection
+
+### Linearity
+
+We assess the linearity of the relationship between PRSM and the predictors 
+using component-residual plots and find that Months shows nonlinearity in a somewhat logarithmic form. 
+We transform Months to approximately its inverse (to be precise, Box-Tidwell suggests -1.1987).
+
 ```{r transform}
 # Months seems to need transformation
 crPlots(model_clean) 
@@ -76,11 +90,21 @@ boxTidwell(PRSM ~ TotalAmtOwed + Volume + Stress + Num_Delinquent + Num_CreditLi
 
 transformed_model <- lm(PRSM ~ . - Months + I(Months^(-1.19487)),
                        data = installment2_id01_clean)
+# TODO: don't hardcode
 
 summary(transformed_model)
 rmse(transformed_model$fitted.values, installment2_id01_clean$PRSM) # 0.1018195
-```
 
+crPlots(lm(PRSM ~ I(Months^(-1.19487)), data = installment2_id01_clean))
+```
+### Variable and Interaction Selection
+
+We aim to create a parsimonious model that explains the most variance. 
+We do this in a multi-stage selection process.
+
+First, we use bidirectional stepwise on the model containing all main effects (with Months transformed). 
+It identifies NAICS, Num_Delinquent, and Num_CreditLines as non-significant predictors and removes them.
+We also remove Volume as it is non-significant and its effect is most likely covered by Stress.
 
 ```{r rm_var}
 # TODO: talk about just doing step instead of LASSO and Step?
@@ -100,6 +124,8 @@ summary(model_cv)
 
 # Volume is not significant (remove later)
 ```
+Secondly, we search for statistically significant two-way interactions with LASSO, that affect PRSM meaningfully. 
+We add quite a few interactions between FICO, Stress, WomanOwned and CorpStructure with other predictors to the model.
 
 ```{r interaction_lasso}
 
@@ -159,5 +185,6 @@ ggplot(data = installment2_id01_clean, aes(x = WomanOwned)) +
 
 ```
 
-
-
+Finally, we test the validity of the model, with variables properly casted and
+outliers removed from the data, Months transformed, selected main effects, and interaction terms.
+We find the model to meet the assumptions and have the lowest RMSE so we choose it as the final model.
