@@ -57,7 +57,7 @@ installment2_id01_clean = installment2_id01 %>%
   dplyr::select(-residual) # clean data (use this!!)
 
 model_clean = lm(PRSM ~. , data = installment2_id01_clean) 
-plot(model_clean,1) # these look much better! but perhaps discuss different outlier removal techniques
+plot(model_clean,1) # these look much better! but perhaps discuss different outlier removal techniques TODO: talk about this!
 
 summary(model_clean)
 
@@ -83,6 +83,7 @@ rmse(transformed_model$fitted.values, installment2_id01_clean$PRSM) # 0.1018195
 
 
 ```{r rm_var}
+# TODO: talk about just doing step instead of LASSO and Step?
 # Step Model
 step_model <- step(transformed_model, trace = 0, direction = "both")
 summary(step_model)
@@ -138,6 +139,12 @@ rmse(step_interact_model$fitted.values, installment2_id01_clean$PRSM) # RMSE = 0
 
 
 # TODO: look over hints..., multiple regression assumptions, interpretations of the parameters, explanation for how we selected the characteristics of the baseline borrower
+
+# CHECK ASSUMPTIONS FOR FINAL MODEL
+plot(step_interact_model, 2)
+plot(step_interact_model, 1)
+vif(step_interact_model) # <5, still ok for multicol
+
 # current findings:
 # Stress:WomanOwned1, and LLC but smaller => pos. 
 # WomanOwned1:CorpStructurePartner => pos.
