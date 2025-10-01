@@ -20,11 +20,23 @@ library(glmnet)
 library(ggplot2)
 library(knitr)
 library(gtsummary)
+library(patchwork)
 ```
+
+## Content
+
+-   Data Preprocessing and Cleaning
+
+-   Model Development and Selection
+
+    1.  Linearity and predictor transformation
+    2.  Variable and interaction selection
+
+-   Result and Interpretation
 
 ## Data Preprocessing
 
-## We load and preprocess the data to ensure the nonnumerical variables aren't considered numerical by R.
+We load and preprocess the data to ensure the nonnumerical variables aren't considered numerical by R (FICO, NAICS, WomanOwned).
 
 ```{r load_clean}
 installment2_id01 <- read.csv("installment2_id01.csv")
@@ -44,22 +56,38 @@ installment2_id01 = installment2_id01 %>%
            (800 <= FICO)&(FICO <= 850) ~ "Excellent",
          ))
 
-
-installment2_id01 %>% tbl_summary(
+theme_gtsummary_compact()
+installment2_id01 %>% 
+  select(FICO, NAICS, WomanOwned) %>% 
+  tbl_summary(
     statistic = list(
       all_continuous() ~ c(
-        "{median} ({p25}, {p75})", # Median and Interquartile Range (IQR)
-        "{min}, {max}"            # Minimum and Maximum
+        "{median} ({p25}, {p75})",
+        "{min}, {max}"
       )
     ),
-    type = all_continuous() ~ "continuous2" # Ensures multi-line output for continuous variables
-  )
+    type = all_continuous() ~ "continuous2"
+  ) %>% 
+  modify_header(all_stat_cols() ~ "**N = {N}**") %>% 
+  modify_footnote(everything() ~ NA_character_)
 # TODO: meaningful units?
+
+
 ```
 
-## We then notice a few points have PRSM values that are out of distribution (less than 0 or greater than 2) and remove them.
+## Data Preprocessing
+
+We then notice a few points have PRSM values that are out of distribution (less than 0 or greater than 2) and remove them.
 
 ```{r remove_outliers, warning=FALSE}
+
+installment2_id01 %>% 
+  summarise(`min PRSM` = min(PRSM),
+            `median PRSM` = median(PRSM),
+            `mean PRSM` = mean(PRSM),
+            `max PRSM` = max(PRSM)) %>% 
+  kable(digits = 2, caption = "PRSM with outliers")
+
 installment2_id01_clean <- subset(installment2_id01, PRSM > 0 & PRSM < 2)
 installment2_id01_summary = installment2_id01_clean %>% 
   summarise(`min PRSM` = min(PRSM),
@@ -67,50 +95,107 @@ installment2_id01_summary = installment2_id01_clean %>%
             `mean PRSM` = mean(PRSM),
             `max PRSM` = max(PRSM))
 
-kable(installment2_id01_summary, digits = 2)
+kable(installment2_id01_summary, digits = 2, caption = "PRSM after removing outliers")
 ```
 
 The summary of the PRSM after removing the outliers.
 
 ## Model Development and Selection
 
-### Linearity
+### 1. Linearity and predictor transformation
 
-```{r transform, warning=FALSE}
+Months shows non-linearity
+
+```{r linearity, warning=FALSE}
 crPlots(lm(PRSM ~ Months, data = installment2_id01_clean))
+```
 
+## Model Development and Selection
+
+### 1. Linearity and predictor transformation
+
+```{r transform1, warning=FALSE}
 # Transformations from boxTidwell
-boxTidwell_results <- boxTidwell(PRSM ~ TotalAmtOwed + Volume + Stress + Num_Delinquent + Num_CreditLines + Months,
+boxTidwell_results <- boxTidwell(PRSM ~ TotalAmtOwed +
+                                   Volume + Stress + Num_Delinquent +
+                                   Num_CreditLines + Months,
           data = installment2_id01_clean)
-kable(boxTidwell_results$result[,c("MLE of lambda","Pr(>|t|)" )], digits = 2)
 
 lambda_months <- boxTidwell_results$result[c("Months"),c("MLE of lambda")]
 lambda_num_delinquent <- boxTidwell_results$result[c("Num_Delinquent"),c("MLE of lambda")]
+```
 
+We transform Months and Num_Delinquent to approximately its inverse (to be precise, Box-Tidwell suggests `r round(lambda_months, 2)` for Months, `r round(lambda_num_delinquent, 2)` for Num_Delinquent).
+
+```{r transform_table, warning=FALSE}
+boxTidwell_results$result[,c("MLE of lambda","Pr(>|t|)" )] %>% 
+  as.data.frame %>% 
+  mutate(`Pr(>|t|)` = ifelse(`Pr(>|t|)` < 0.05, "<0.05", 
+                             sprintf("%.2f", `Pr(>|t|)`))) %>%
+  kable(digits = 2)
+
+```
+
+## Model Development and Selection
+
+### 1. Linearity and predictor transformation
+
+The Month predictor transformed is statistically significant but Num_Delinquent is not. Therefore, we remove Num_Delinquent for predictor selection
+
+```{r transform2, warning=FALSE}
 transformed_model <- lm(PRSM ~ . - Months + I(Months^(lambda_months)) - Num_Delinquent + I(Num_Delinquent^(lambda_num_delinquent)),
                        data = installment2_id01_clean)
 
-summary_transformed_model <- summary(transformed_model)
-kable(summary_transformed_model$coefficients[,c("Estimate","Pr(>|t|)")], digits = 2)
+summary(transformed_model)$coefficients[,"Pr(>|t|)", drop = FALSE] %>% 
+  as.data.frame %>% 
+  slice((n() - 1):n()) %>% 
+  mutate(`Pr(>|t|)` = ifelse(`Pr(>|t|)` < 0.05, "<0.05", 
+                             sprintf("%.2f", `Pr(>|t|)`))) %>%
+  kable(digits = 2)
+```
 
+## Model Development and Selection
+
+### 1. Linearity and predictor transformation
+
+Transformed Months
+
+```{r linear_month, warning=FALSE}
 crPlots(lm(PRSM ~ I(Months^(lambda_months)), data = installment2_id01_clean))
 ```
 
-We assess the linearity of the relationship between PRSM and the predictors using component-residual plots and find that Months shows nonlinearity in a somewhat logarithmic form. We transform Months to approximately its inverse (to be precise, Box-Tidwell suggests `r round(lambda_months, 2)`). The Month predictor transformed is statistically significant but Num_Delinquent is not.
+## Model Development and Selection
 
-### Variable and Interaction Selection
+### 2. Variable and interaction selection
 
 We aim to create a parsimonious model that explains the most variance. We do this in a multi-stage selection process.
+
+First, we use bidirectional stepwise on the model containing all main effects (with Months transformed). It identifies Num_Delinquent, and Num_CreditLines as statistically non-significant predictors and removes them. We also remove Volume as it is statistically non-significant and its effect is most likely covered by Stress.
+
+## Model Development and Selection
+
+### 2. Variable and interaction selection
 
 ```{r rm_var, warning=FALSE}
 # Step Model
 step_model <- step(transformed_model, trace = 0, direction = "both")
-kable(summary(step_model)$coefficients[,c("Estimate","Pr(>|t|)")], digits = 2)
+summary(step_model)$coefficients[,c("Estimate","Pr(>|t|)")] %>% 
+  as.data.frame %>% 
+  slice(2:n()) %>% 
+  mutate(`Pr(>|t|)` = ifelse(`Pr(>|t|)` < 0.05, "<0.05", 
+                             sprintf("%.2f", `Pr(>|t|)`))) %>%
+  kable(digits = 2)
 ```
 
-First, we use bidirectional stepwise on the model containing all main effects (with Months transformed). It identifies Num_Delinquent, and Num_CreditLines as non-significant predictors and removes them. We also remove Volume as it is non-significant and its effect is most likely covered by Stress.
+## Model Development and Selection
+
+### 2. Variable and interaction selection
 
 Secondly, we search for statistically significant two-way interactions with LASSO, that affect PRSM meaningfully. We add quite a few interactions between FICO, Stress, WomanOwned and CorpStructure with other predictors to the model.
+
+## Model Development and Selection
+
+### 2. Variable and interaction selection
 
 ```{r interaction_lasso}
 # Find interactions using LASSO
@@ -182,12 +267,12 @@ summary(installment2_id01$Stress)
 
 Interpretation of coefficients in the final model:
 
--   Compared to borrowers from the category of FICO Excellent, all other borrowers (from the remaining FICO categories) perform worse. FICO Poor is `r round(summary(step_interact_model2)$coefficients[c("FICOPoor"),c("Estimate")], 3)` worse. FICO Fair is `r round(summary(step_interact_model2)$coefficients[c("FICOFair"),c("Estimate")], 3)` worse. FICO Good is `r round(summary(step_interact_model2)$coefficients[c("FICOGood"),c("Estimate")], 3)` worse. FICO Very Good is `r round(summary(step_interact_model2)$coefficients[c("FICOVery Good"),c("Estimate")], 3)` worse. 
+-   Compared to borrowers from the category of FICO Excellent, all other borrowers (from the remaining FICO categories) perform worse. FICO Poor is `r round(summary(step_interact_model2)$coefficients[c("FICOPoor"),c("Estimate")], 3)` worse. FICO Fair is `r round(summary(step_interact_model2)$coefficients[c("FICOFair"),c("Estimate")], 3)` worse. FICO Good is `r round(summary(step_interact_model2)$coefficients[c("FICOGood"),c("Estimate")], 3)` worse. FICO Very Good is `r round(summary(step_interact_model2)$coefficients[c("FICOVery Good"),c("Estimate")], 3)` worse.
 -   Total Amount Owed has no discernible effect on PRSM although it is statistically significant with the coefficient of `r round(summary(step_interact_model2)$coefficients[c("TotalAmtOwed"),c("Estimate")], 7)`.
--   Stress has a significantly strong positive effect on PRSM with the coefficient of  `r round(summary(step_interact_model2)$coefficients[c("Stress"),c("Estimate")], 3)`. For every 0.1 unit increase of Stress, the PRSM increases by `r round(summary(step_interact_model2)$coefficients[c("Stress"),c("Estimate")], 3)/10`
+-   Stress has a significantly strong positive effect on PRSM with the coefficient of `r round(summary(step_interact_model2)$coefficients[c("Stress"),c("Estimate")], 3)`. For every 0.1 unit increase of Stress, the PRSM increases by `r round(summary(step_interact_model2)$coefficients[c("Stress"),c("Estimate")], 3)/10`
 -   Compared to businesses not owned by women, women owned businesses are expected to increase `r round(summary(step_interact_model2)$coefficients[c("WomanOwned1"),c("Estimate")], 3)` of PRSM
 -   Compared to corporations, two other business structures (partnership (`r round(summary(step_interact_model2)$coefficients[c("CorpStructurePartner"),c("Estimate")], 3)`) and limited liability corporation (LLC) (`r round(summary(step_interact_model2)$coefficients[c("CorpStructureLLC"),c("Estimate")], 3)`)) are better. On the other hand, sole proprietorship (`r round(summary(step_interact_model2)$coefficients[c("CorpStructureSole"),c("Estimate")], 3)`) is worse.
--   For every Months^(`r lambda_months`), the PRSM decreases by `r round(summary(step_interact_model2)$coefficients[c("Months_transformed"),c("Estimate")], 3)`
+-   For every Months\^(`r lambda_months`), the PRSM decreases by `r round(summary(step_interact_model2)$coefficients[c("Months_transformed"),c("Estimate")], 3)`
 -   The negative effects of lower FICO categories are decreased if the business is women-owned.
 -   TODO: FICO:Months
 -   TODO: Stress:WomanOwned1
@@ -208,4 +293,5 @@ print(newdata)
 as.data.frame(round(predict(step_interact_model2, 
         newdata=newdata), 8))
 ```
+
 The baseline borrower has a Good FICO score, `r median(installment2_id01_clean$TotalAmtOwed)` of Total Amount Owed, and `r median(installment2_id01_clean$Stress)` of Stress, is not a woman, is structured as a LLC, and TODO: `r median(installment2_id01_clean$Months_transformed)`
