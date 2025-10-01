@@ -7,8 +7,6 @@ geometry:
   - margin=1in
 ---
 
-
-
 ```{r}
 #| label: setup
 #| echo: false
@@ -18,15 +16,12 @@ rm(list = ls())
 
 library(dplyr)
 library(ModelMetrics)
-library(MASS)
 library(car)
-library(caret)
 library(glmnet)
 library(ggplot2)
 library(knitr)
 library(gtsummary)
 ```
-
 
 ```{r load_clean, echo=FALSE}
 installment2_id01 <- read.csv("installment2_id01.csv")
@@ -65,12 +60,10 @@ transformed_model <- lm(PRSM ~ . - Months + I(Months^(lambda_months)) - Num_Deli
                        data = installment2_id01_clean)
 ```
 
-
 ```{r rm_var, warning=FALSE, echo=FALSE}
 # Step Model
 step_model <- step(transformed_model, trace = 0, direction = "both")
 ```
-
 
 ```{r interaction_lasso, echo=FALSE}
 # Find interactions using LASSO
@@ -105,7 +98,7 @@ interact_model = lm(PRSM ~. + FICO:Stress + FICO:WomanOwned + FICO:CorpStructure
 step_interact_model = step(interact_model, trace = 0, direction = "both")
 
 # NAICS is not statistically significant; remove NAICS
-interact_model2 = lm(PRSM ~. + FICO:Stress + FICO:WomanOwned + FICO:CorpStructure 
+interact_model_final = lm(PRSM ~. + FICO:Stress + FICO:WomanOwned + FICO:CorpStructure 
                     + FICO:Months_transformed + Stress:WomanOwned 
                     + Stress:CorpStructure + WomanOwned:CorpStructure 
                     + WomanOwned:Months_transformed + CorpStructure:Months_transformed
@@ -113,11 +106,9 @@ interact_model2 = lm(PRSM ~. + FICO:Stress + FICO:WomanOwned + FICO:CorpStructur
                                                     "TotalAmtOwed","Stress",
                                                     "WomanOwned", "CorpStructure",
                                                     "Months_transformed")])
-step_interact_model2 = step(interact_model2, trace = 0, direction = "both")
+step_interact_final = step(interact_model_final, trace = 0, direction = "both")
 
 ```
-
-
 
 ```{r baseline, echo=FALSE}
 newdata<-installment2_id01_clean[1,]
@@ -129,54 +120,30 @@ newdata[,c("WomanOwned")] <- "0"
 newdata[,c("CorpStructure")] <- "LLC"
 newdata[,c("Months_transformed")] <- median(installment2_id01_clean$Months_transformed)
 
-predicted_PRSM <- as.data.frame(round(predict(step_interact_model2, 
+predicted_PRSM <- as.data.frame(round(predict(step_interact_final, 
         newdata=newdata), 8))
 ```
 
+Our analysis of credit risk, measured here by the PRSM score, reveals that a borrower's risk profile is not determined by a single characteristic but a complex interplay of characteristics. The key characteristics are the business's FICO score, its financial stress level, ownership structure (e.g., woman-owned, corporate structure), and months of operation.
 
-
-Our analysis of credit risk, measured here by the PRSM score, reveals that a borrower's 
-risk profile is not determined by a single characteristic but a complex interplay of characteristics.
-The key characteristics are the business's FICO score, its financial stress level,
-ownership structure (e.g., woman-owned, corporate structure), and months of operation.
-
-
--   Compared to borrowers from the category of FICO Excellent, all other borrowers (from the remaining FICO categories) perform worse.
--   Total Amount Owed has no discernible effect on PRSM although it is statistically significant with the coefficient of `r round(summary(step_interact_model2)$coefficients[c("TotalAmtOwed"),c("Estimate")], 7)`.
--   Stress has a significantly strong positive effect on PRSM with the coefficient of  `r round(summary(step_interact_model2)$coefficients[c("Stress"),c("Estimate")], 3)`. For every 0.1 unit increase of Stress, the PRSM increases by `r round(summary(step_interact_model2)$coefficients[c("Stress"),c("Estimate")], 3)/10`
--   Compared to businesses not owned by women, women owned businesses are expected to increase `r round(summary(step_interact_model2)$coefficients[c("WomanOwned1"),c("Estimate")], 3)` of PRSM
--   Compared to corporations, two other business structures (partnership (`r round(summary(step_interact_model2)$coefficients[c("CorpStructurePartner"),c("Estimate")], 3)`) and limited liability corporation (LLC) (`r round(summary(step_interact_model2)$coefficients[c("CorpStructureLLC"),c("Estimate")], 3)`)) are better. On the other hand, sole proprietorship (`r round(summary(step_interact_model2)$coefficients[c("CorpStructureSole"),c("Estimate")], 3)`) is worse.
--   For every Months^(`r lambda_months`), the PRSM decreases by `r round(summary(step_interact_model2)$coefficients[c("Months_transformed"),c("Estimate")], 3)`
+-   Compared to borrowers with the Excellent FICO (credit) score, all other borrowers (from the remaining FICO categories) have lower PRSM.
+-   Total amount owed to the credit union has no practical effect on PRSM.
+-   Stress has a strong positive effect on PRSM.
+-   Women-owned businesses have a higher PRSM than otherwise businesses.
+-   Compared to corporations, partnership and limited liability corporation (LLC) business structures have higher PRSM. On the other hand, sole proprietorship does not have discernible effect on PRSM.
+-   The number of months for which the business has been open has an negative impact on PRSM.
 -   The negative effects of lower FICO categories are decreased if the business is women-owned.
 -   TODO: FICO:Months
--   TODO: Stress:WomanOwned1
+-   TODO: Stress:WomanOwned1 Women-owned businesses tend to have more monthly garnishment to the expected volume of credit card transactions than others.
 -   The LLC corporate structure does not perform well if the business is owned by women.
 -   TODO: CorpStructure:Month_transformed
 
-
-The baseline borrower has a Good FICO score, `r median(installment2_id01_clean$TotalAmtOwed)` of Total Amount Owed, and `r median(installment2_id01_clean$Stress)` of Stress, is not a woman, is structured as a LLC, and TODO: `r median(installment2_id01_clean$Months_transformed)`. The predicted PRSM is `r predicted_PRSM`
+The baseline borrower has a Good FICO score, \$`r format(median(installment2_id01_clean$TotalAmtOwed),big.mark = ",")` of total amount owed, and `r round(median(installment2_id01_clean$Stress),2)` of stress, is not a woman, has a business structured as a LLC, and has opened the business for `r median(installment2_id01_clean$Months)` months. The predicted PRSM is `r round(predicted_PRSM,3)`
 
 TODO: final summary
 
-Bohyoon: hint4: raw didnt work, hint5: keep looking for transformation methods, hint2,3,6,7: valid, 
-
-You should submit a 2-page document with your executive summary on page 1, and your
-reference & contributions on page 2.
-The executive summary should present your conclusions and be free of technical jargon, figures,
-graphs, and code. In other words, you should describe and interpret your results and should not
-describe the process by which you obtained your results. The executive summary should convey the
-main conclusions of your modeling efforts in language that is accessible to someone who may not
-have taken STAT 628 before. Your executive summary should
-• List the factors that drive substantial variation in PRSM. You should not exhaustively list
-all variables that have a statistically discernible effect. It is possible that a predictor has a
-statistically discernible effect but not a practically relevant (significant) one.
-• Introduce a baseline potential borrower by selecting values of each predictor in your final
-model. Report the predicted PRSM (along with relevant uncertainty intervals) of your baseline
-borrower.
-• Describe the main drivers of PRSM and indicate which are associated with greater or lesser
-credit risk relative to the baseline.
-• Use conveniently rounded numbers when forming a baseline borrower and highlighting changes
-relative to that baseline. Similarly, 1 unit changes in some predictors may not be that relevant;
-consider using more realistic or practically relevant changes.
-Your executive summary should not be longer than 1 page. Do not adjust the page margins or use
-an extremely small font size to achieve this. 
+| Contributions | Bohyoon Lee | Salsabila Mahdi |
+|---------------|-------------|-----------------|
+|               |             |                 |
+|               |             |                 |
+|               |             |                 |
