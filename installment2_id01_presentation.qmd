@@ -33,12 +33,12 @@ library(broom)
     1.  Linearity and predictor transformation
     2.  Variable and interaction selection
 
--   Result and Interpretation
+-   Result and Interpretation (Main Effects and Interactions)
 -   Outlines Avenues for Future Development or Improvement
 
 ## Data Preprocessing
 
--   We load and preprocess the data to ensure the nonnumerical variables aren't considered numerical by R (FICO, NAICS, WomanOwned).
+-   We load and preprocess the data to ensure the nonnumerical variables aren't considered numerical (FICO, NAICS, WomanOwned).
 
 ```{r load_clean}
 installment2_id01 <- read.csv("installment2_id01.csv")
@@ -197,7 +197,7 @@ step_model <- step(transformed_model, trace = 0, direction = "both")
 
 ### 2. Variable and interaction selection
 
--   Finally, we again use bidirectional stepwise on the model containing all main effects and potential interactions to finalize the practical predictors including interactions.
+-   Finally, we again use **bidirectional stepwise** on the model containing all main effects and potential interactions to finalize the practical predictors including interactions.
 
 
 
@@ -280,17 +280,25 @@ ggplot(plot_step_interact_model, aes(x = term, y = estimate, fill = term)) +
 # summary(installment2_id01$Stress)
 ```
 
-## Result and Interpretation
-\small
+## Result and Interpretation - Main Effects
+
 -   Compared to borrowers with the Excellent FICO (credit) score, all other borrowers (from the remaining FICO categories) have lower PRSM.
 -   Total amount owed to the credit union has no practical effect on PRSM.
 -   Stress has a strong positive effect on PRSM.
 -   Women-owned businesses have a higher PRSM than otherwise businesses.
 -   Compared to corporations, partnership and limited liability corporation (LLC) business structures have higher PRSM. On the other hand, sole proprietorship does not have discernible effect on PRSM.
 -   The number of months for which the business has been open has an negative impact on PRSM.
+
+
+## Result and Interpretation - Interactions
+
 -   The negative effects of lower FICO categories are decreased if the business is women-owned.
+-   For the excellent and very good FICO businesess, older businesses perform less than the good FICO businesses.
 -   Women-owned businesses tend to have more stress than others.
 -   The LLC corporate structure does not perform well if the business is owned by women.
+-   The older the corporations are, the more beneficial they are compared to LLCs.
 
 ## Outlines Avenues for Future Development or Improvement
--   We may conduct LASSO first to estimate the effect of Num_Delinquent in the future.
+-   We may conduct LASSO first rather than stepwise regression to estimate the effect of Num_Delinquent in the future.
+-   We may consider a different criteria for stepwise regression such as Bayesian Information Criterion (BIC) instead of AIC in the future.
+-   We may consider various NAICS subgroups for the predictors rather than considering only sectors.
