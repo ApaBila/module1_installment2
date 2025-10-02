@@ -21,8 +21,7 @@ library(glmnet)
 library(ggplot2)
 library(knitr)
 library(gtsummary)
-library(patchwork)
-library(kableExtra)
+library(broom)
 ```
 
 ## Content
@@ -91,7 +90,6 @@ installment2_id01 %>%
             `max PRSM` = max(PRSM)) %>% 
   kable(digits = 2, caption = "PRSM with outliers")
 ```
--   The summary of the PRSM after removing the outliers.
 
 ```{r remove_outliers,warning=FALSE}
 installment2_id01_clean <- subset(installment2_id01, PRSM > 0 & PRSM < 2)
@@ -110,15 +108,14 @@ kable(installment2_id01_summary, digits = 2, caption = "PRSM after removing outl
 
 ### 1. Linearity and predictor transformation
 
--   Months shows non-linearity
-
+\small
 ```{r linearity, warning=FALSE}
-crPlots(lm(PRSM ~ Months, data = installment2_id01_clean))
+
 ```
 
-## Model Development and Selection
+<!-- ## Model Development and Selection -->
 
-### 1. Linearity and predictor transformation
+<!-- ### 1. Linearity and predictor transformation -->
 
 ```{r transform1, warning=FALSE}
 # Transformations from boxTidwell
@@ -131,43 +128,42 @@ lambda_months <- boxTidwell_results$result[c("Months"),c("MLE of lambda")]
 lambda_num_delinquent <- boxTidwell_results$result[c("Num_Delinquent"),c("MLE of lambda")]
 ```
 
--   We transform Months and Num_Delinquent to approximately its inverse (to be precise, Box-Tidwell suggests `r round(lambda_months, 2)` for Months, `r round(lambda_num_delinquent, 2)` for Num_Delinquent).
+-   Months shows non-linearity; we transform Months and Num_Delinquent to approximately its inverse from the Box-Tidwell test.
 
-```{r transform_table, warning=FALSE}
-boxTidwell_results$result[,c("MLE of lambda","Pr(>|t|)" )] %>% 
-  as.data.frame %>% 
-  mutate(`Pr(>|t|)` = ifelse(`Pr(>|t|)` < 0.05, "<0.05", 
-                             sprintf("%.2f", `Pr(>|t|)`))) %>%
-  kable(digits = 2)
+<!-- # ```{r transform_table, warning=FALSE} -->
+<!-- # boxTidwell_results$result[,c("MLE of lambda","Pr(>|t|)" )] %>%  -->
+<!-- #   as.data.frame %>%  -->
+<!-- #   mutate(`Pr(>|t|)` = ifelse(`Pr(>|t|)` < 0.05, "<0.05",  -->
+<!-- #                              sprintf("%.2f", `Pr(>|t|)`))) %>% -->
+<!-- #   kable(digits = 2) -->
+<!-- #  -->
+<!-- # ``` -->
 
-```
+<!-- ## Model Development and Selection -->
 
-## Model Development and Selection
+<!-- ### 1. Linearity and predictor transformation -->
 
-### 1. Linearity and predictor transformation
-
--   The Month predictor transformed is statistically significant but Num_Delinquent is not. Therefore, we remove Num_Delinquent for predictor selection
+-   The transformed Month predictor is discernible, while Num_Delinquent is not in the main effect model. Therefore, we remove Num_Delinquent for predictor selection.
 
 ```{r transform2, warning=FALSE}
 transformed_model <- lm(PRSM ~ . - Months + I(Months^(lambda_months)) - Num_Delinquent + I(Num_Delinquent^(lambda_num_delinquent)),
                        data = installment2_id01_clean)
 
-summary(transformed_model)$coefficients[,"Pr(>|t|)", drop = FALSE] %>% 
-  as.data.frame %>% 
-  slice((n() - 1):n()) %>% 
-  mutate(`Pr(>|t|)` = ifelse(`Pr(>|t|)` < 0.05, "<0.05", 
-                             sprintf("%.2f", `Pr(>|t|)`))) %>%
-  kable(digits = 2)
+# summary(transformed_model)$coefficients[,"Pr(>|t|)", drop = FALSE] %>% 
+#   as.data.frame %>% 
+#   slice((n() - 1):n()) %>% 
+#   mutate(`Pr(>|t|)` = ifelse(`Pr(>|t|)` < 0.05, "<0.05", 
+#                              sprintf("%.2f", `Pr(>|t|)`))) %>%
+#   kable(digits = 2)
 ```
 
-## Model Development and Selection
-
-### 1. Linearity and predictor transformation
-
--   Transformed Months
-
 ```{r linear_month, warning=FALSE}
-crPlots(lm(PRSM ~ I(Months^(lambda_months)), data = installment2_id01_clean))
+#| fig-width: 10
+#| fig-height: 4
+
+par(mfrow = c(1, 2))
+crPlots(lm(PRSM ~ Months, data = installment2_id01_clean), xlab = "residual vs. fitted for Months")
+crPlots(lm(PRSM ~ I(Months^(lambda_months)), data = installment2_id01_clean), xlab = "residual vs. fitted for Months transformed")
 ```
 
 ## Model Development and Selection
@@ -176,7 +172,7 @@ crPlots(lm(PRSM ~ I(Months^(lambda_months)), data = installment2_id01_clean))
 
 -   We aim to create a parsimonious model that explains the most variance. We do this in a multi-stage selection process.
 
--   First, we use bidirectional stepwise on the model containing all main effects (with Months transformed). It identifies Num_Delinquent, and Num_CreditLines as statistically non-significant predictors and removes them. We also remove Volume as it is statistically non-significant and its effect is most likely covered by Stress.
+-   First, we use **bidirectional stepwise** on the model containing all main effects (with Months transformed). It identifies Num_Delinquent, and Num_CreditLines as statistically non-significant predictors and removes them. We also remove Volume as it is statistically non-significant and its effect is most likely covered by Stress.
 
 ## Model Development and Selection
 
@@ -185,28 +181,26 @@ crPlots(lm(PRSM ~ I(Months^(lambda_months)), data = installment2_id01_clean))
 ```{r rm_var, warning=FALSE}
 # Step Model
 step_model <- step(transformed_model, trace = 0, direction = "both")
-summary(step_model)$coefficients[,c("Estimate","Pr(>|t|)")] %>% 
-  as.data.frame %>% 
-  slice(2:n()) %>% 
-  mutate(`Pr(>|t|)` = ifelse(`Pr(>|t|)` < 0.05, "<0.05", 
-                             sprintf("%.2f", `Pr(>|t|)`))) %>%
-  kable(digits = 2)
+# summary(step_model)$coefficients[,c("Estimate","Pr(>|t|)")] %>% 
+#   as.data.frame %>% 
+#   slice(2:n()) %>% 
+#   mutate(`Pr(>|t|)` = ifelse(`Pr(>|t|)` < 0.05, "<0.05", 
+#                              sprintf("%.2f", `Pr(>|t|)`))) %>%
+#   kable(digits = 2)
 ```
+
+-   Secondly, we search for statistically significant **two-way interactions with LASSO**, which affect PRSM meaningfully. We add quite a few interactions between FICO, Stress, WomanOwned and CorpStructure with other predictors to the model.
+
+-   FICO:Stress, FICO:WomanOwned, FICO:CorpStructure, FICO:Months_transformed, Stress:WomanOwned, Stress:CorpStructure, WomanOwned:CorpStructure, WomanOwned:Months_transformed, CorpStructure:Months_transformed, FICO:NAICS, WomanOwned:NAICS, CorpStructure:NAICS, Months_transformed:NAICS, Stress:NAICS are selected as potential interactions.
 
 ## Model Development and Selection
 
 ### 2. Variable and interaction selection
 
--   Secondly, we search for statistically significant two-way interactions with LASSO, that affect PRSM meaningfully. We add quite a few interactions between FICO, Stress, WomanOwned and CorpStructure with other predictors to the model.
-
--   FICO:Stress, FICO:WomanOwned, FICO:CorpStructure, FICO:Months_transformed, Stress:WomanOwned, Stress:CorpStructure, WomanOwned:CorpStructure, WomanOwned:Months_transformed, CorpStructure:Months_transformed, FICO:NAICS, WomanOwned:NAICS, CorpStructure:NAICS, Months_transformed:NAICS, Stress:NAICS are selected as potential interactions.
-
-## Final Model Selection
-
 -   Finally, we again use bidirectional stepwise on the model containing all main effects and potential interactions to finalize the practical predictors including interactions.
 
-## Final Model Selection
-\tiny
+
+
 ```{r interaction_lasso}
 # Find interactions using LASSO
 installment2_id01_clean$Months_transformed =
@@ -227,7 +221,7 @@ significant_terms <- lasso_coeffs[abs(lasso_coeffs[,1]) > threshold, , drop = FA
 
 # potential interactions: FICO:Stress, FICO:WomanOwned, FICO:CorpStructure, FICO:Months_transformed, Stress:WomanOwned, Stress:CorpStructure, WomanOwned:CorpStructure, WomanOwned:Months_transformed, CorpStructure:Months_transformed, FICO:NAICS, WomanOwned:NAICS, CorpStructure:NAICS, Months_transformed:NAICS, Stress:NAICS
 
-interact_model = lm(PRSM ~. + FICO:Stress + FICO:WomanOwned + FICO:CorpStructure 
+interact_model <- lm(PRSM ~. + FICO:Stress + FICO:WomanOwned + FICO:CorpStructure 
                     + FICO:Months_transformed + Stress:WomanOwned 
                     + Stress:CorpStructure + WomanOwned:CorpStructure 
                     + WomanOwned:Months_transformed + CorpStructure:Months_transformed
@@ -237,16 +231,36 @@ interact_model = lm(PRSM ~. + FICO:Stress + FICO:WomanOwned + FICO:CorpStructure
                                                     "TotalAmtOwed","Stress",
                                                     "WomanOwned", "CorpStructure",
                                                     "Months_transformed", "NAICS")])
-step_interact_model = step(interact_model, trace = 0, direction = "both")
+step_interact_model <- step(interact_model, trace = 0, direction = "both")
 ```
 
 ```{r summary, warning=FALSE}
+#| fig-width: 11
+#| fig-height: 6
+#| out-width: "92.5%"
+ 
 # printed R summary of the fitted model
-summary(step_interact_model)$coefficients[,c("Estimate","Pr(>|t|)")] %>% 
-  as.data.frame %>% 
-  mutate(`Pr(>|t|)` = ifelse(`Pr(>|t|)` < 0.05, "<0.05", 
-                             sprintf("%.3f", `Pr(>|t|)`))) %>%
-  kable(digits = 3)
+# summary(step_interact_model)$coefficients[,c("Estimate","Pr(>|t|)")] %>% 
+#   as.data.frame %>% 
+#   mutate(`Pr(>|t|)` = ifelse(`Pr(>|t|)` < 0.05, "<0.05", 
+#                              sprintf("%.3f", `Pr(>|t|)`))) %>%
+#   kable(digits = 3)
+
+plot_step_interact_model <- tidy(step_interact_model) %>% 
+  filter(term != "(Intercept)")
+
+ggplot(plot_step_interact_model, aes(x = term, y = estimate, fill = term)) +
+  geom_col(show.legend = TRUE) +
+  geom_hline(yintercept = 0, linewidth = 0.3) +
+  scale_x_discrete(breaks = NULL) +
+  theme(
+    legend.text = element_text(size = 8),
+    legend.key.size = unit(12, "pt"),
+    legend.position = "bottom",
+    legend.title = element_blank()
+  ) 
+
+
 ```
 
 
@@ -279,3 +293,4 @@ summary(step_interact_model)$coefficients[,c("Estimate","Pr(>|t|)")] %>%
 -   The LLC corporate structure does not perform well if the business is owned by women.
 
 ## Outlines Avenues for Future Development or Improvement
+-   We may conduct LASSO first to estimate the effect of Num_Delinquent in the future.
