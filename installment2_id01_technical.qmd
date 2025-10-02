@@ -4,7 +4,7 @@ author: "Bohyoon Lee and Salsabila Mahdi"
 date: last-modified
 format: pdf
 geometry:
-  - margin=1in
+  - margin=0.5in
 ---
 
 ```{r}
@@ -160,12 +160,15 @@ lasso_coeffs <- coef(cv_lasso_interactions, s = best_lambda)
 threshold <- 0.001
 significant_terms <- lasso_coeffs[abs(lasso_coeffs[,1]) > threshold, , drop = FALSE]
 print(significant_terms)
+```
 
-# potential interactions: FICO:Stress, FICO:WomanOwned, FICO:CorpStructure, 
-# FICO:Months_transformed, Stress:WomanOwned, Stress:CorpStructure, 
-# WomanOwned:CorpStructure, WomanOwned:Months_transformed, 
-# CorpStructure:Months_transformed, FICO:NAICS, WomanOwned:NAICS, 
-# CorpStructure:NAICS, Months_transformed:NAICS, Stress:NAICS
+```{r interacion_model, warning=FALSE}
+# Potential interactions: FICO:Stress, FICO:WomanOwned,
+# FICO:CorpStructure, FICO:Months_transformed, Stress:WomanOwned, 
+# Stress:CorpStructure, WomanOwned:CorpStructure, 
+# WomanOwned:Months_transformed, CorpStructure:Months_transformed, 
+# FICO:NAICS, WomanOwned:NAICS, CorpStructure:NAICS, 
+# Months_transformed:NAICS, Stress:NAICS.
 
 interact_model = lm(PRSM ~. + FICO:Stress + FICO:WomanOwned + FICO:CorpStructure 
                     + FICO:Months_transformed + Stress:WomanOwned 
@@ -204,16 +207,19 @@ Finally, we test the validity of the model, with variables properly casted and o
 # CHECK ASSUMPTIONS FOR FINAL MODEL
 plot(step_interact_final, 2)
 plot(step_interact_final, 1)
-vif(step_interact_final) # <5, still ok for multicol
+vif(step_interact_final)[,"GVIF^(1/(2*Df))"] # <5, still ok for multicol
 
-# TODO: why ggplot? => A: artefact of exploration phase, we kept it so we'd remember how to make similar plots
+# TODO: why ggplot? => 
+# A: artefact of exploration phase, 
+# we kept it so we'd remember how to make similar plots
+
 ggplot(data = installment2_id01_clean, aes(x = WomanOwned)) +
   geom_bar() +
   facet_wrap(~ FICO)
 ```
 
-Below is the summary of the fitted model and the RMSE. 
- 
+Below is the summary of the fitted model and the RMSE (`r rmse(step_interact_final$fitted.values, installment2_id01_clean$PRSM)`).
+
 ```{r summary_fitted}
 # Printed R summary of the fitted model. This is the final model
 summary(step_interact_final)$coefficients[,c("Estimate","Pr(>|t|)")] %>% 
@@ -222,121 +228,78 @@ summary(step_interact_final)$coefficients[,c("Estimate","Pr(>|t|)")] %>%
                              sprintf("%.3f", `Pr(>|t|)`))) %>%
   kable(digits = 3)
 
-rmse(step_interact_final$fitted.values, installment2_id01_clean$PRSM) # RMSE: 0.09830548
+rmse(step_interact_final$fitted.values, installment2_id01_clean$PRSM)
+# RMSE: 0.09830548
 ```
-
-
 
 ### Interpretation
 
 Main effects in the final model:
 
-1.    **FICO Score**. Compared to borrowers with a **Good** FICO score
-    (the baseline), borrowers in other categories perform differently.
-    Borrowers with an **Excellent** score are expected to have a higher
-    PRSM by `r round(summary(step_interact_final)$coefficients[c("FICOExcellent"),c("Estimate")], 3)`,
-    while those with a **Very Good** score see an increase of
-    `r round(summary(step_interact_final)$coefficients[c("FICOVery Good"),c("Estimate")], 3)`.
-    Conversely, those with a **Fair** score have a lower PRSM by
-    `r round(summary(step_interact_final)$coefficients[c("FICOFair"),c("Estimate")], 3)`.
-    The negative effect for the "Poor" category is not statistically significant.
+1.  **FICO Score**. Compared to borrowers with a **Good** FICO score (the baseline), borrowers in other categories perform differently. Borrowers with an **Excellent** score are expected to have a higher PRSM by `r round(summary(step_interact_final)$coefficients[c("FICOExcellent"),c("Estimate")], 3)`, while those with a **Very Good** score see an increase of `r round(summary(step_interact_final)$coefficients[c("FICOVery Good"),c("Estimate")], 3)`. Conversely, those with a **Fair** score have a lower PRSM by `r round(summary(step_interact_final)$coefficients[c("FICOFair"),c("Estimate")], 3)`. The negative effect for the "Poor" category is not statistically significant.
 
-2.  **Total Amount Owed**. Total Amount Owed has no practical effect on
-    PRSM although it is statistically significant with a coefficient of
-    `r round(summary(step_interact_final)$coefficients[c("TotalAmtOwed"),c("Estimate")], 7)`.
+2.  **Total Amount Owed**. Total Amount Owed has no practical effect on PRSM although it is statistically significant with a coefficient of `r round(summary(step_interact_final)$coefficients[c("TotalAmtOwed"),c("Estimate")], 7)`.
 
-3.  **Stress**. Stress has a significantly strong positive effect on PRSM
-    with a coefficient of
-    `r round(summary(step_interact_final)$coefficients[c("Stress"),c("Estimate")], 3)`.
-    For every 0.1 unit increase of Stress, the PRSM increases by
-    `r round(summary(step_interact_final)$coefficients[c("Stress"),c("Estimate")], 3)/10`.
+3.  **Stress**. Stress has a significantly strong positive effect on PRSM with a coefficient of `r round(summary(step_interact_final)$coefficients[c("Stress"),c("Estimate")], 3)`. For every 0.1 unit increase of Stress, the PRSM increases by `r round(summary(step_interact_final)$coefficients[c("Stress"),c("Estimate")], 3)/10`.
 
-4.  **Woman Owned**. Compared to businesses not owned by women, women-owned
-    businesses are expected to increase PRSM by
-    `r round(summary(step_interact_final)$coefficients[c("WomanOwned1"),c("Estimate")], 3)`.
+4.  **Woman Owned**. Compared to businesses not owned by women, women-owned businesses are expected to increase PRSM by `r round(summary(step_interact_final)$coefficients[c("WomanOwned1"),c("Estimate")], 3)`.
 
-5.  **Corporate Structure**. Compared to businesses structured as an **LLC**
-    (the baseline), all other structures are associated with a lower PRSM.
-    **Corporations** are associated with a PRSM that is lower by
-    `r round(summary(step_interact_final)$coefficients[c("CorpStructureCorp"),c("Estimate")], 3)`,
-    **Partnerships** by
-    `r round(summary(step_interact_final)$coefficients[c("CorpStructurePartner"),c("Estimate")], 3)`,
-    and **Sole Proprietorships** by
-    `r round(summary(step_interact_final)$coefficients[c("CorpStructureSole"),c("Estimate")], 3)`.
+5.  **Corporate Structure**. Compared to businesses structured as an **LLC** (the baseline), all other structures are associated with a lower PRSM. **Corporations** are associated with a PRSM that is lower by `r round(summary(step_interact_final)$coefficients[c("CorpStructureCorp"),c("Estimate")], 3)`, **Partnerships** by `r round(summary(step_interact_final)$coefficients[c("CorpStructurePartner"),c("Estimate")], 3)`, and **Sole Proprietorships** by `r round(summary(step_interact_final)$coefficients[c("CorpStructureSole"),c("Estimate")], 3)`.
 
-6.  **Months in Business**. The transformed Months variable
-    (Months^(`r lambda_months`)) gets smaller as the months a business
-    is open increases. Its negative coefficient of
-    `r round(summary(step_interact_final)$coefficients[c("Months_transformed"),c("Estimate")], 3)`
-    indicates that PRSM increases as the business ages, though this effect
-    diminishes over time.
+6.  **Months in Business**. The transformed Months variable (Months\^(`r lambda_months`)) gets smaller as the months a business is open increases. Its negative coefficient of `r round(summary(step_interact_final)$coefficients[c("Months_transformed"),c("Estimate")], 3)` indicates that PRSM increases as the business ages, though this effect diminishes over time.
 
 Interaction effects in the final model:
 
-1.  **FICO:WomanOwned**. The positive main effect of a business being
-    woman-owned is modified by the borrower's FICO score. For a
-    woman-owned business with an **Excellent** FICO score, the PRSM
-    increases by an *additional*
-    `r round(summary(step_interact_final)$coefficients[c("FICOExcellent:WomanOwned1"),c("Estimate")], 3)`.
-    Conversely, the effect is reduced for those with **Fair** and **Poor**
-    scores, with an additional change of
-    `r round(summary(step_interact_final)$coefficients[c("FICOFair:WomanOwned1"),c("Estimate")], 3)`
-    and
-    `r round(summary(step_interact_final)$coefficients[c("FICOPoor:WomanOwned1"),c("Estimate")], 3)`,
-    respectively. The interaction for the "Very Good" category is not
-    statistically significant.
+1.  **FICO:WomanOwned**. The positive main effect of a business being woman-owned is modified by the borrower's FICO score. For a woman-owned business with an **Excellent** FICO score, the PRSM increases by an *additional* `r round(summary(step_interact_final)$coefficients[c("FICOExcellent:WomanOwned1"),c("Estimate")], 3)`. Conversely, the effect is reduced for those with **Fair** and **Poor** scores, with an additional change of `r round(summary(step_interact_final)$coefficients[c("FICOFair:WomanOwned1"),c("Estimate")], 3)` and `r round(summary(step_interact_final)$coefficients[c("FICOPoor:WomanOwned1"),c("Estimate")], 3)`, respectively. The interaction for the "Very Good" category is not statistically significant.
 
-2.  **FICO:Months_transformed**. The effect of business age on PRSM is
-    significantly different for borrowers in the **Excellent** and
-    **Very Good** FICO categories compared to the "Good" baseline. The
-    effect of `Months_transformed` changes by an additional
-    `r round(summary(step_interact_final)$coefficients[c("FICOExcellent:Months_transformed"),c("Estimate")], 3)`
-    for "Excellent" borrowers and by
-    `r round(summary(step_interact_final)$coefficients[c("FICOVery Good:Months_transformed"),c("Estimate")], 3)`
-    for "Very Good" borrowers. Other FICO interaction terms for this
-    variable are not statistically significant.
+2.  **FICO:Months_transformed**. The effect of business age on PRSM is significantly different for borrowers in the **Excellent** and **Very Good** FICO categories compared to the "Good" baseline. The effect of `Months_transformed` changes by an additional `r round(summary(step_interact_final)$coefficients[c("FICOExcellent:Months_transformed"),c("Estimate")], 3)` for "Excellent" borrowers and by `r round(summary(step_interact_final)$coefficients[c("FICOVery Good:Months_transformed"),c("Estimate")], 3)` for "Very Good" borrowers. Other FICO interaction terms for this variable are not statistically significant.
 
-3.  **Stress:WomanOwned**. The positive effect of Stress on PRSM is even
-    stronger for woman-owned businesses. For every 0.1 unit increase in
-    Stress, the PRSM for a woman-owned business increases by an
-    *additional*
-    `r round(summary(step_interact_final)$coefficients[c("Stress:WomanOwned1"),c("Estimate")]*0.1, 3)`
-    compared to a non-woman-owned business.
+3.  **Stress:WomanOwned**. The positive effect of Stress on PRSM is even stronger for woman-owned businesses. For every 0.1 unit increase in Stress, the PRSM for a woman-owned business increases by an *additional* `r round(summary(step_interact_final)$coefficients[c("Stress:WomanOwned1"),c("Estimate")]*0.1, 3)` compared to a non-woman-owned business.
 
-4.  **WomanOwned:CorpStructure**. For woman-owned businesses, the negative
-    main effects associated with non-LLC structures are lessened. The
-    PRSM for a **woman-owned Corporation** increases by an additional
-    `r round(summary(step_interact_final)$coefficients[c("WomanOwned1:CorpStructureCorp"),c("Estimate")], 3)`,
-    a **woman-owned Partnership** by
-    `r round(summary(step_interact_final)$coefficients[c("WomanOwned1:CorpStructurePartner"),c("Estimate")], 3)`,
-    and a **woman-owned Sole Proprietorship** by
-    `r round(summary(step_interact_final)$coefficients[c("WomanOwned1:CorpStructureSole"),c("Estimate")], 3)`.
+4.  **WomanOwned:CorpStructure**. For woman-owned businesses, the negative main effects associated with non-LLC structures are lessened. The PRSM for a **woman-owned Corporation** increases by an additional `r round(summary(step_interact_final)$coefficients[c("WomanOwned1:CorpStructureCorp"),c("Estimate")], 3)`, a **woman-owned Partnership** by `r round(summary(step_interact_final)$coefficients[c("WomanOwned1:CorpStructurePartner"),c("Estimate")], 3)`, and a **woman-owned Sole Proprietorship** by `r round(summary(step_interact_final)$coefficients[c("WomanOwned1:CorpStructureSole"),c("Estimate")], 3)`.
 
-5.  **CorpStructure:Months_transformed**. The effect of business age on
-    PRSM is significantly different for corporations compared to LLCs.
-    For a **Corporation**, the effect of `Months_transformed` changes by an
-    additional
-    `r round(summary(step_interact_final)$coefficients[c("CorpStructureCorp:Months_transformed"),c("Estimate")], 3)`.
-    The effects for other structures are not statistically significant.
-
-
+5.  **CorpStructure:Months_transformed**. The effect of business age on PRSM is significantly different for corporations compared to LLCs. For a **Corporation**, the effect of `Months_transformed` changes by an additional `r round(summary(step_interact_final)$coefficients[c("CorpStructureCorp:Months_transformed"),c("Estimate")], 3)`. The effects for other structures are not statistically significant.
 
 ### Baseline Borrower
 
+Below is the baseline borrower status.
+
 ```{r baseline}
-newdata<-installment2_id01_clean[1,]; print(newdata)
-as.data.frame(round(predict(step_interact_final, 
-        newdata=newdata), 8))
-newdata[,c("FICO")] <- "Good"
+newdata<-installment2_id01_clean[1, 2:ncol(installment2_id01_clean)]
+newdata[,c("FICO")] <- get_mode(installment2_id01_clean$FICO)
 newdata[,c("TotalAmtOwed")] <- median(installment2_id01_clean$TotalAmtOwed)
 newdata[,c("Stress")] <- median(installment2_id01_clean$Stress)
-newdata[,c("WomanOwned")] <- "0"
-newdata[,c("CorpStructure")] <- "LLC"
+newdata[,c("WomanOwned")] <- get_mode(installment2_id01_clean$WomanOwned)
+newdata[,c("CorpStructure")] <- get_mode(installment2_id01_clean$CorpStructure)
 newdata[,c("Months")] <- median(installment2_id01_clean$Months)
 newdata[,c("Months_transformed")] <- median(installment2_id01_clean$Months)^lambda_months
-print(newdata)
-as.data.frame(round(predict(step_interact_final, 
-        newdata=newdata), 8))
+kable(t(newdata), col.names = c("Predictors","Status"))
 ```
 
-The baseline borrower has a Good FICO score, `r median(installment2_id01_clean$TotalAmtOwed)` of Total Amount Owed, and `r median(installment2_id01_clean$Stress)` of Stress, is not a woman, is structured as a LLC, and has opened the business for `r median(installment2_id01_clean$Months)` months.
+The baseline borrower has a Good FICO score, `r median(installment2_id01_clean$TotalAmtOwed)` of Total Amount Owed, and `r median(installment2_id01_clean$Stress)` of Stress, is not a woman, is structured as a LLC, and has opened the business for `r median(installment2_id01_clean$Months)` months. The predicted PRSM for the baseline borrower would be `r round(predict(step_interact_final, 
+        newdata=newdata), 8)`
+
+### Evaluation Prediction
+
+``` {r prediction_evaluation, warning=FALSE}
+evaluation_data <- read.csv(file = "installment2_evaluation_data.csv") 
+evaluation_data <- evaluation_data %>% 
+  mutate(Months_transformed = Months^lambda_months,
+         NAICS = as.factor(substr(NAICS, 1, 2)),
+         WomanOwned = as.factor(WomanOwned),
+         CorpStructure = as.factor(CorpStructure),
+         FICO = as.factor(case_when(
+           (300 <= FICO)&(FICO <= 579) ~ "Poor",
+           (580 <= FICO)&(FICO <= 669) ~ "Fair",
+           (670 <= FICO)&(FICO <= 739) ~ "Good",
+           (740 <= FICO)&(FICO <= 799) ~ "Very Good",
+           (800 <= FICO)&(FICO <= 850) ~ "Excellent",
+         )))
+
+predictions <- predict(
+ object = step_interact_final,
+ newdata = evaluation_data,
+ interval = "prediction"
+ )
+write.csv(predictions, file = "predictions.csv")
+```
