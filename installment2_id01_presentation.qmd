@@ -11,113 +11,206 @@ format:
 #| warning: false 
 
 rm(list = ls())
+installment2_id01 <- read.csv("installment2_id01.csv")
 
 library(dplyr)
+library(tidyr)
 library(ModelMetrics)
 library(MASS)
 library(car)
 library(caret)
 library(glmnet)
 library(ggplot2)
+library(patchwork)
 library(knitr)
 library(gtsummary)
 library(broom)
+library(stringr)
 ```
 
 ## Content
 
--   Data Preprocessing and Cleaning
+-   Baseline Borrower
+-   A bit about Model Development
+-   The Final Model and Interpretations
+-   Future Development
+-   Appendix: Model Development Details
 
--   Model Development and Selection
+<!--    1.    Variable and interaction selection
+    2.    Assumptions -->
 
-    1.  Linearity and predictor transformation
-    2.  Variable and interaction selection
+## Baseline Borrower
 
--   Result and Interpretation (Main Effects and Interactions)
--   Outlines Avenues for Future Development or Improvement
+Let's start with the baseline borrower's characteristics, which we decide based on what is most common in the data.
 
-## Data Preprocessing
+## Baseline Borrower: PRSM
 
--   We load and preprocess the data to ensure the nonnumerical variables aren't considered numerical (FICO, NAICS, WomanOwned).
-
-```{r load_clean}
-installment2_id01 <- read.csv("installment2_id01.csv")
-
-# make NAICS, WomanOwned, FICO categorical variables
-
-installment2_id01 = installment2_id01 %>%
-  mutate(NAICS = as.factor(substr(NAICS, 1, 2)),
-         WomanOwned = as.factor(WomanOwned),
-#         Num_Delinquent = as.factor(Num_Delinquent),
-#         Num_CreditLines = as.factor(Num_CreditLines),
-         FICO = case_when(
-           (300 <= FICO)&(FICO <= 579) ~ "Poor",
-           (580 <= FICO)&(FICO <= 669) ~ "Fair",
-           (670 <= FICO)&(FICO <= 739) ~ "Good",
-           (740 <= FICO)&(FICO <= 799) ~ "Very Good",
-           (800 <= FICO)&(FICO <= 850) ~ "Excellent",
-         ))
-
-theme_gtsummary_compact()
-installment2_id01 %>% 
-  select(FICO, NAICS, WomanOwned) %>% 
-  tbl_summary(
-    statistic = list(
-      all_continuous() ~ c(
-        "{median} ({p25}, {p75})",
-        "{min}, {max}"
-      )
-    ),
-    type = all_continuous() ~ "continuous2"
-  ) %>% 
-  modify_header(all_stat_cols() ~ "**N = {N}**") %>% 
-  modify_footnote(everything() ~ NA_character_)
-# TODO: meaningful units?
-
-
-```
-
-## Data Preprocessing
-
--   We then notice a few points have PRSM values that are out of distribution (less than 0 or greater than 2) and remove them.
+-   For the variable we're trying to predict, PRSM, there are values that don't make sense (less than 0 or greater than 2) so we remove them.
 
 ```{r with_outliers, warning=FALSE}
 
 installment2_id01 %>% 
-  summarise(`min PRSM` = min(PRSM),
-            `median PRSM` = median(PRSM),
-            `mean PRSM` = mean(PRSM),
-            `max PRSM` = max(PRSM)) %>% 
+  summarise(`min` = min(PRSM),
+            `median` = median(PRSM),
+            `mean` = mean(PRSM),
+            `max` = max(PRSM)) %>% 
   kable(digits = 2, caption = "PRSM with outliers")
+installment2_id01_clean <- subset(installment2_id01, PRSM > 0 & PRSM < 2)
 ```
 
+-   After removing such values, we see that the baseline PRSM score is about `r round(mean(installment2_id01_clean$PRSM), 1)`.
+
 ```{r remove_outliers,warning=FALSE}
-installment2_id01_clean <- subset(installment2_id01, PRSM > 0 & PRSM < 2)
 installment2_id01_summary = installment2_id01_clean %>% 
-  summarise(`min PRSM` = min(PRSM),
-            `median PRSM` = median(PRSM),
-            `mean PRSM` = mean(PRSM),
-            `max PRSM` = max(PRSM))
+  summarise(`min` = min(PRSM),
+            `median` = median(PRSM),
+            `mean` = mean(PRSM),
+            `max` = max(PRSM))
 
 kable(installment2_id01_summary, digits = 2, caption = "PRSM after removing outliers")
 ```
 
 
+## Baseline Borrower: 4 Categorical Predictors
 
-## Model Development and Selection
+```{r load_clean, warning=FALSE}
 
-### 1. Linearity and predictor transformation
+# make NAICS, WomanOwned, FICO categorical variables
 
-\small
-```{r linearity, warning=FALSE}
+installment2_id01_clean = installment2_id01_clean %>%
+  mutate(NAICS = as.factor(substr(NAICS, 1, 2)),
+         WomanOwned = as.factor(WomanOwned),
+#         Num_Delinquent = as.factor(Num_Delinquent),
+#         Num_CreditLines = as.factor(Num_CreditLines),
+         CorpStructure = as.factor(CorpStructure),
+         FICO = as.factor(case_when(
+           (300 <= FICO)&(FICO <= 579) ~ "Poor",
+           (580 <= FICO)&(FICO <= 669) ~ "Fair",
+           (670 <= FICO)&(FICO <= 739) ~ "Good",
+           (740 <= FICO)&(FICO <= 799) ~ "Very Good",
+           (800 <= FICO)&(FICO <= 850) ~ "Excellent",
+         )))
+
+get_mode <- function(categorical_x) {
+  mode <- names(which.max(table(categorical_x)))[1]
+}
+
+FICO_mode <- get_mode(installment2_id01_clean$FICO)
+Woman_mode <- get_mode(installment2_id01_clean$WomanOwned)
+NAICS_mode <- get_mode(installment2_id01_clean$NAICS)
+Corp_mode <- get_mode(installment2_id01_clean$CorpStructure)
+
+
+
+theme_gtsummary_compact()
+installment2_id01_clean %>% 
+  select(FICO, NAICS, WomanOwned, CorpStructure) %>% 
+  tbl_summary() %>% 
+  modify_header(all_stat_cols() ~ "**N = {N}**") %>% 
+  modify_footnote(everything() ~ NA_character_) %>%
+  modify_bold(
+    columns = c(label, stat_0),
+    rows =
+      (variable == "FICO" & label == FICO_mode) |
+      (variable == "WomanOwned" & label == Woman_mode) |
+      (variable == "NAICS" & label == NAICS_mode) |
+      (variable == "CorpStructure" & label == Corp_mode)
+  )
+# TODO: meaningful units?
+
+
+installment2_id01_clean$FICO <- relevel(installment2_id01_clean$FICO, 
+                                  ref = FICO_mode)
+installment2_id01_clean$WomanOwned <- relevel(installment2_id01_clean$WomanOwned,
+                                        ref = Woman_mode)
+installment2_id01_clean$NAICS <- relevel(installment2_id01_clean$NAICS,
+                                           ref = NAICS_mode)
+installment2_id01_clean$CorpStructure <- relevel(installment2_id01_clean$CorpStructure,
+                                           ref = Corp_mode)
+
 
 ```
 
-<!-- ## Model Development and Selection -->
+<!-- doesn't fit with CorpStructure -->
+<!-- -   So, the baseline borrower is a business with a `r FICO_mode` FICO score, not owned by a woman, works in the Retail Trade industry, and is structured as an LLC. -->
 
-<!-- ### 1. Linearity and predictor transformation -->
+## Baseline Borrower: 6 Numerical Predictors
+```{r}
+installment2_id01_clean$Num_Delinquent <- as.numeric(installment2_id01_clean$Num_Delinquent)
+installment2_id01_clean$Num_CreditLines <- as.numeric(installment2_id01_clean$Num_CreditLines)
 
-```{r transform1, warning=FALSE}
+variable_order <- c("Total Amount Owed", "Volume", "Stress", "Number of Credit Lines", "Number of Delinquencies", "Months")
+
+installment2_id01_clean %>%
+  select(Months, Num_CreditLines, Num_Delinquent, Stress, TotalAmtOwed, Volume) %>%
+  pivot_longer(everything(), names_to = "Characteristic", values_to = "value") %>%
+  mutate(
+    Characteristic = dplyr::recode(Characteristic,
+      "Num_CreditLines" = "Number of Credit Lines",
+      "Num_Delinquent" = "Number of Delinquencies",
+      "TotalAmtOwed" = "Total Amount Owed"
+    )
+  ) %>%
+  group_by(Characteristic) %>%
+  summarise(
+    Median = median(value, na.rm = TRUE),
+    Min = min(value, na.rm = TRUE),
+    Max = max(value, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Summary = case_when(
+      Characteristic %in% c("Total Amount Owed", "Volume") ~
+        paste0(
+          round(Median / 10000, 1), " (",
+          round(Min / 10000, 1), ", ",
+          round(Max / 10000, 1), "), in $10k"
+        ),
+      Characteristic %in% c("Number of Credit Lines", "Number of Delinquencies", "Months") ~
+        paste0(round(Median, 0), " (", round(Min, 0), ", ", round(Max, 0), ")"),
+      TRUE ~
+        paste0(round(Median, 1), " (", round(Min, 1), ", ", round(Max, 1), ")")
+    )
+  ) %>%
+  select(Characteristic, Summary) %>%
+  arrange(factor(Characteristic, levels = variable_order)) %>%
+  kable(
+    col.names = c("Characteristic", "Median (Min, Max)"),
+    caption = "Summary of Numerical Predictors",
+    align = "lr"
+  )
+
+## interpretation sentence
+# Calculate a summary tibble of the medians
+numerical_summary <- installment2_id01_clean %>%
+  summarise(
+    across(
+      c(TotalAmtOwed, Volume, Stress, Num_CreditLines, Num_Delinquent, Months),
+      ~median(.x, na.rm = TRUE)
+    )
+  )
+
+# Extract and format each median into its own variable for easy inline use
+median_owed <- round(numerical_summary$TotalAmtOwed / 10000, 1)
+median_volume <- round(numerical_summary$Volume / 10000, 1)
+median_stress <- round(numerical_summary$Stress, 1)
+median_lines <- round(numerical_summary$Num_CreditLines, 0)
+median_delinquent <- round(numerical_summary$Num_Delinquent, 0)
+median_months <- round(numerical_summary$Months, 0)
+```
+
+The baseline borrower owes **`r median_owed`** in total with **`r median_volume`** credit use each month (both in $10k). Each month the amount they pay back is **`r paste0(median_stress*100,"%")`** of the amount used. They have **`r median_delinquent` delinquencies** out of **`r median_lines` credit lines**, and have been operating for **`r median_months/12` years**.
+
+<!-- Perhaps because they are small businesses, but this is concerning-->
+
+
+## A bit about Model Development: (1) Transforming Months
+
+
+<!-- ### 1. Transforming Months -->
+
+
+```{r transform, warning=FALSE}
 # Transformations from boxTidwell
 boxTidwell_results <- boxTidwell(PRSM ~ TotalAmtOwed +
                                    Volume + Stress + Num_Delinquent +
@@ -126,85 +219,66 @@ boxTidwell_results <- boxTidwell(PRSM ~ TotalAmtOwed +
 
 lambda_months <- boxTidwell_results$result[c("Months"),c("MLE of lambda")]
 lambda_num_delinquent <- boxTidwell_results$result[c("Num_Delinquent"),c("MLE of lambda")]
-```
-
--   Months shows non-linearity; we transform Months and Num_Delinquent to approximately its inverse from the Box-Tidwell test.
-
-<!-- # ```{r transform_table, warning=FALSE} -->
-<!-- # boxTidwell_results$result[,c("MLE of lambda","Pr(>|t|)" )] %>%  -->
-<!-- #   as.data.frame %>%  -->
-<!-- #   mutate(`Pr(>|t|)` = ifelse(`Pr(>|t|)` < 0.05, "<0.05",  -->
-<!-- #                              sprintf("%.2f", `Pr(>|t|)`))) %>% -->
-<!-- #   kable(digits = 2) -->
-<!-- #  -->
-<!-- # ``` -->
-
-<!-- ## Model Development and Selection -->
-
-<!-- ### 1. Linearity and predictor transformation -->
-
--   The transformed Month predictor is discernible, while Num_Delinquent is not in the main effect model. Therefore, we remove Num_Delinquent for predictor selection.
-
-```{r transform2, warning=FALSE}
 transformed_model <- lm(PRSM ~ . - Months + I(Months^(lambda_months)) - Num_Delinquent + I(Num_Delinquent^(lambda_num_delinquent)),
                        data = installment2_id01_clean)
-
-# summary(transformed_model)$coefficients[,"Pr(>|t|)", drop = FALSE] %>% 
-#   as.data.frame %>% 
-#   slice((n() - 1):n()) %>% 
-#   mutate(`Pr(>|t|)` = ifelse(`Pr(>|t|)` < 0.05, "<0.05", 
-#                              sprintf("%.2f", `Pr(>|t|)`))) %>%
-#   kable(digits = 2)
-```
-
-```{r linear_month, warning=FALSE}
-#| fig-width: 10
-#| fig-height: 4
-
-par(mfrow = c(1, 2))
-crPlots(lm(PRSM ~ Months, data = installment2_id01_clean), xlab = "residual vs. fitted for Months")
-crPlots(lm(PRSM ~ I(Months^(lambda_months)), data = installment2_id01_clean), xlab = "residual vs. fitted for Months transformed")
-```
-
-## Model Development and Selection
-
-### 2. Variable and interaction selection
-
--   We aim to create a parsimonious model that explains the most variance. We do this in a multi-stage selection process.
-
--   First, we use **bidirectional stepwise** on the model containing all main effects (with Months transformed). It identifies Num_Delinquent, and Num_CreditLines as statistically non-significant predictors and removes them. We also remove Volume as it is statistically non-significant and its effect is most likely covered by Stress.
-
-## Model Development and Selection
-
-### 2. Variable and interaction selection
-
-```{r rm_var, warning=FALSE}
-# Step Model
-step_model <- step(transformed_model, trace = 0, direction = "both")
-# summary(step_model)$coefficients[,c("Estimate","Pr(>|t|)")] %>% 
-#   as.data.frame %>% 
-#   slice(2:n()) %>% 
-#   mutate(`Pr(>|t|)` = ifelse(`Pr(>|t|)` < 0.05, "<0.05", 
-#                              sprintf("%.2f", `Pr(>|t|)`))) %>%
-#   kable(digits = 2)
-```
-
--   Secondly, we search for statistically significant **two-way interactions with LASSO**, which affect PRSM meaningfully. We add quite a few interactions between FICO, Stress, WomanOwned and CorpStructure with other predictors to the model.
-
--   FICO:Stress, FICO:WomanOwned, FICO:CorpStructure, FICO:Months_transformed, Stress:WomanOwned, Stress:CorpStructure, WomanOwned:CorpStructure, WomanOwned:Months_transformed, CorpStructure:Months_transformed, FICO:NAICS, WomanOwned:NAICS, CorpStructure:NAICS, Months_transformed:NAICS, Stress:NAICS are selected as potential interactions.
-
-## Model Development and Selection
-
-### 2. Variable and interaction selection
-
--   Finally, we again use **bidirectional stepwise** on the model containing all main effects and potential interactions to finalize the practical predictors including interactions.
-
-
-
-```{r interaction_lasso}
-# Find interactions using LASSO
 installment2_id01_clean$Months_transformed =
   (installment2_id01_clean$Months)^(lambda_months)
+```
+
+We find that PRSM does not have a linear relationship with months so we transform months (based on Box-Tidwell's suggested power transformation).
+
+```{r linear_month, warning=FALSE}
+#| fig-width: 13
+#| fig-height: 7
+
+# after
+p1 <- ggplot(installment2_id01_clean, aes(x = Months, y = PRSM)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "loess", aes(color = "Actual Trend"), se = FALSE, linewidth = 1.2) +
+  geom_smooth(method = "lm", aes(color = "Linear Model's Prediction"), se = FALSE, linetype = "dashed", linewidth = 1.2) +
+  scale_color_manual(values = c("purple", "blue")) +
+  labs(
+    title = "Before Transformation",
+    x = "Months",
+    y = "PRSM Score",
+    color = "Fit Type"
+  ) +
+  theme_minimal(base_size = 16)
+
+# b4
+p2 <- ggplot(installment2_id01_clean, aes(x = Months_transformed, y = PRSM)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "loess", aes(color = "Actual Trend"), se = FALSE, linewidth = 1.2) +
+  geom_smooth(method = "lm", aes(color = "Linear Model's Prediction"), se = FALSE, linetype = "dashed", linewidth = 1.2) +
+  scale_color_manual(values = c("purple", "blue")) +
+  labs(
+    title = "After Transformation",
+    x = "Months (Transformed)",
+    y = "PRSM Score",
+    color = "Fit Type"
+  ) +
+  theme_minimal(base_size = 16)
+
+# Combine
+(p1 + p2) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+```
+
+## A bit about Model Development: (2) Selecting factors
+
+We aim to create a simple model that explains the most variance. We select factors in a multi-stage process.
+
+-   First, we use **bidirectional stepwise** on the model containing all main effects (with Months transformed) to identify significant predictors.
+-   Secondly, we search for statistically significant and practically meaningful two-way interactions with **LASSO**.
+<!--    We add quite a few interactions between FICO, Stress, WomanOwned, CorpStructure, NAICS with other predictors to the model. FICO:Stress, FICO:WomanOwned, FICO:CorpStructure, FICO:Months_transformed, Stress:WomanOwned, Stress:CorpStructure, WomanOwned:CorpStructure, WomanOwned:Months_transformed, CorpStructure:Months_transformed, FICO:NAICS, WomanOwned:NAICS, CorpStructure:NAICS, Months_transformed:NAICS, Stress:NAICS are selected as potential interactions. -->
+-   Finally, we again use bidirectional stepwise on the model containing the selected main effects and potential interactions to finalize the predictors.
+
+```{r var_select, warning=FALSE}
+# Step Model
+step_model <- step(transformed_model, trace = 0, direction = "both")
+# Find interactions using LASSO
+
 x <- model.matrix(PRSM ~ .^2, 
                   data = installment2_id01_clean[,c("PRSM", "FICO",
                                                     "TotalAmtOwed","Stress",
@@ -219,8 +293,6 @@ lasso_coeffs <- coef(cv_lasso_interactions, s = best_lambda)
 threshold <- 0.001
 significant_terms <- lasso_coeffs[abs(lasso_coeffs[,1]) > threshold, , drop = FALSE]
 
-# potential interactions: FICO:Stress, FICO:WomanOwned, FICO:CorpStructure, FICO:Months_transformed, Stress:WomanOwned, Stress:CorpStructure, WomanOwned:CorpStructure, WomanOwned:Months_transformed, CorpStructure:Months_transformed, FICO:NAICS, WomanOwned:NAICS, CorpStructure:NAICS, Months_transformed:NAICS, Stress:NAICS
-
 interact_model <- lm(PRSM ~. + FICO:Stress + FICO:WomanOwned + FICO:CorpStructure 
                     + FICO:Months_transformed + Stress:WomanOwned 
                     + Stress:CorpStructure + WomanOwned:CorpStructure 
@@ -231,37 +303,207 @@ interact_model <- lm(PRSM ~. + FICO:Stress + FICO:WomanOwned + FICO:CorpStructur
                                                     "TotalAmtOwed","Stress",
                                                     "WomanOwned", "CorpStructure",
                                                     "Months_transformed", "NAICS")])
+
 step_interact_model <- step(interact_model, trace = 0, direction = "both")
 ```
 
-```{r summary, warning=FALSE}
-#| fig-width: 11
-#| fig-height: 6
-#| out-width: "92.5%"
- 
-# printed R summary of the fitted model
-# summary(step_interact_model)$coefficients[,c("Estimate","Pr(>|t|)")] %>% 
-#   as.data.frame %>% 
-#   mutate(`Pr(>|t|)` = ifelse(`Pr(>|t|)` < 0.05, "<0.05", 
-#                              sprintf("%.3f", `Pr(>|t|)`))) %>%
-#   kable(digits = 3)
+## Final Model: Categorical Main Effects on PRSM Score
 
-plot_step_interact_model <- tidy(step_interact_model) %>% 
-  filter(term != "(Intercept)")
+```{r}
+plot_categorical_effects <- tidy(step_interact_model) %>%
+  filter(term != "(Intercept)") %>%
+  filter(!grepl(":", term)) %>%
+  mutate(
+    group = case_when(
+      grepl("FICO", term) ~ "FICO",
+      grepl("CorpStructure", term) ~ "Corporate Structure",
+      grepl("NAICS", term) ~ "NAICS",
+      grepl("WomanOwned", term) ~ "Woman-Owned",
+      TRUE ~ "Numerical"
+    ),
+    term = dplyr::recode(term,
+      "FICOExcellent" = "FICO\n(Excellent)", "FICOVery Good" = "FICO\n(Very Good)",
+      "FICOFair" = "FICO\n(Fair)", "FICOPoor" = "FICO\n(Poor)",
+      "CorpStructurePartner" = "Partnership", "CorpStructureCorp" = "Corporation",
+      "CorpStructureSole" = "Sole Prop.",
+      "NAICS45" = "NAICS\n(45)", "NAICS72" = "NAICS\n(72)",
+      "WomanOwned1" = "Woman-Owned\n(Yes)",
+      "Months_transformed" = "Months\n(Transformed)", "Stress" = "Stress",
+      "TotalAmtOwed" = "Total Amount\nOwed"
+    ),
+    p_label = if_else(p.value < 0.001, "p < 0.001", paste0("p = ", round(p.value, 3)))
+  ) %>%
+  filter(group != "Numerical")
 
-ggplot(plot_step_interact_model, aes(x = term, y = estimate, fill = term)) +
+ggplot(plot_categorical_effects, aes(x = term, y = estimate, fill = group)) +
   geom_col(show.legend = TRUE) +
   geom_hline(yintercept = 0, linewidth = 0.3) +
-  scale_x_discrete(breaks = NULL) +
+  geom_text(
+    aes(label = p_label),
+    vjust = ifelse(plot_categorical_effects$estimate >= 0, -0.5, 1.5),
+    size = 3
+  ) +
+  scale_x_discrete(
+    limits = c(
+      "FICO\n(Poor)", "FICO\n(Fair)", "FICO\n(Very Good)", "FICO\n(Excellent)",
+      "NAICS\n(45)", "NAICS\n(72)",
+      "Woman-Owned\n(Yes)",
+      "Partnership", "Corporation", "Sole Prop."
+    )
+  ) +
+  scale_fill_manual(
+    values = c(
+      "FICO" = "steelblue", "Corporate Structure" = "olivedrab",
+      "NAICS" = "goldenrod", "Woman-Owned" = "mediumorchid"
+    ),
+    name = "All 4 Categorical Predictors"
+  ) +
+  labs(title = NULL, x = "", y = "Coefficient Estimate") +
+  theme_minimal(base_size = 14) +
   theme(
-    legend.text = element_text(size = 8),
-    legend.key.size = unit(12, "pt"),
-    legend.position = "bottom",
-    legend.title = element_blank()
-  ) 
+    legend.text = element_text(size = 12), legend.key.size = unit(15, "pt"),
+    legend.position = "bottom", legend.title = element_text(size = 14, face = "bold"),
+    axis.text.x = element_text(size = 10),
+    axis.title = element_text(size = 14, face = "bold"),
+    plot.title = element_text(size = 18, face = "bold", hjust = 0.5)
+  )
+```
+
+
+## Final Model: Numerical Main Effects on PRSM Score
+
+```{r summary, warning=FALSE, fig.height=6}
+
+plot_numerical_effects <- tidy(step_interact_model) %>%
+  filter(term != "(Intercept)") %>%
+  filter(!grepl(":", term)) %>%
+  mutate(
+    group = "Numerical",
+    term = dplyr::recode(term,
+      "Months_transformed" = "Months\n(Transformed)",
+      "Stress" = "Stress", "TotalAmtOwed" = "Total Amount\nOwed"
+    ),
+    p_label = if_else(p.value < 0.001, "p < 0.001", paste0("p = ", round(p.value, 3)))
+  ) %>%
+  filter(term %in% c("Months\n(Transformed)", "Stress", "Total Amount\nOwed"))
+
+ggplot(plot_numerical_effects, aes(x = term, y = estimate, fill = group)) +
+  geom_col(show.legend = FALSE) +
+  geom_hline(yintercept = 0, linewidth = 0.3) +
+  geom_text(
+    aes(label = p_label),
+    vjust = ifelse(plot_numerical_effects$estimate >= 0, -0.5, 1.5),
+    size = 4
+  ) +
+  scale_x_discrete(limits = c("Months\n(Transformed)", "Stress", "Total Amount\nOwed")) +
+  scale_y_continuous(
+    name = "Coefficient Estimate",
+    limits = c(-1.4, 0.5),
+    breaks = seq(-1.4, 0.5, by = 0.2),
+    labels = function(x) sprintf("%.1f", x)
+  )+
+  scale_fill_manual(values = c("Numerical" = "firebrick")) +
+  labs(title = "", x = "", y = "Coefficient Estimate") +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x = element_text(size = 12),
+    axis.title = element_text(size = 14, face = "bold"),
+    plot.title = element_text(size = 18, face = "bold", hjust = 0.5)
+  )
 
 
 ```
+
+Note: volume, number of credit lines & delinquents were dropped.
+
+
+## Final Model: Interactions
+
+```{r, fig.width=9, fig.align='left'}
+#| out-width: "90%"
+group_colors <- c(
+  "FICO" = "steelblue",
+  "Woman-Owned" = "mediumorchid",
+  "Stress" = "firebrick",
+  "CorpStructure" = "olivedrab",
+  "Months_transformed" = "darkgrey",
+  "NAICS" = "goldenrod",
+  "Other" = "gray"
+)
+
+interaction_effects_grouped <- tidy(step_interact_model) %>%
+  filter(grepl(":", term)) %>%
+  mutate(
+    original_term = term,
+    term = gsub("WomanOwned1", "Woman-Owned", term),
+    term = gsub("Months_transformed", "Months(Transformed)", term),
+    term = gsub("CorpStructureCorp", "Corporation", term),
+    term = gsub("CorpStructurePartner", "Partnership", term),
+    term = gsub("CorpStructureSole", "Sole Prop.", term),
+    term = gsub("FICOExcellent", "FICO(Excellent)", term),
+    term = gsub("FICOFair", "FICO(Fair)", term),
+    term = gsub("FICOPoor", "FICO(Poor)", term),
+    term = gsub("FICOVery Good", "FICO(Very Good)", term),
+    term_for_plot = gsub(":", " x ", term),
+    
+    primary_factor = case_when(
+      str_detect(original_term, "^FICO") ~ "FICO",
+      str_detect(original_term, "^WomanOwned") ~ "Woman-Owned",
+      str_detect(original_term, "^Stress") ~ "Stress",
+      str_detect(original_term, "^CorpStructure") ~ "CorpStructure",
+      str_detect(original_term, "^Months_transformed") ~ "Months_transformed",
+      str_detect(original_term, "^NAICS") ~ "NAICS",
+      TRUE ~ "Other"
+    ),
+    
+    term_order_within_group = case_when(
+      str_detect(original_term, "FICOExcellent") ~ 1,
+      str_detect(original_term, "FICOVery Good") ~ 2,
+      str_detect(original_term, "FICOFair") ~ 3,
+      str_detect(original_term, "FICOPoor") ~ 4,
+      str_detect(original_term, "NAICS45") ~ 1,
+      str_detect(original_term, "NAICS72") ~ 2,
+      TRUE ~ 99
+    ),
+    
+    p_label = if_else(p.value < 0.001, "p < 0.001", paste0("p = ", round(p.value, 3)))
+  ) %>%
+  mutate(primary_factor = factor(primary_factor, levels = names(group_colors)[names(group_colors) %in% primary_factor])) %>%
+  arrange(primary_factor, estimate) %>%
+  mutate(term_for_plot = factor(term_for_plot, levels = unique(term_for_plot)))
+
+ggplot(interaction_effects_grouped, aes(x = term_for_plot, y = estimate, fill = primary_factor)) +
+  geom_col() +
+  geom_hline(yintercept = 0, linewidth = 0.3) +
+  geom_text(
+    aes(label = p_label),
+    hjust = ifelse(interaction_effects_grouped$estimate >= 0, -0.1, 1.1),
+    size = 3.5,
+    show.legend = FALSE
+  ) +
+  coord_flip() +
+  scale_fill_manual(values = group_colors, name = "Primary Factor") +
+  labs(
+    title = "Interaction Effects on PRSM Score",
+    x = "Interaction Term",
+    y = "Coefficient Estimate"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.y = element_text(size = 10),
+    axis.title = element_text(size = 14, face = "bold"),
+    plot.title = element_text(size = 18, face = "bold", hjust = 0.5),
+    legend.position = "bottom",
+    panel.grid.major.y = element_line(linetype = "dotted", color = "lightgray"),
+    panel.spacing.y = unit(0.5, "cm")
+  )
+```
+
+## Future Development
+-   We may consider a different criteria for stepwise regression such as Bayesian Information Criterion (BIC) instead of AIC in the future.
+-   We may automate then conduct LASSO first rather than stepwise regression, to prevent possibly excluding factors that may not be contribute much information on their own but do so through interactions.
+-   We may consider various NAICS subgroups for the predictors rather than considering only sectors.
+
 
 
 ```{r final_model_checks}
@@ -279,26 +521,3 @@ ggplot(plot_step_interact_model, aes(x = term, y = estimate, fill = term)) +
 
 # summary(installment2_id01$Stress)
 ```
-
-## Result and Interpretation - Main Effects
-
--   Compared to borrowers with the Excellent FICO (credit) score, all other borrowers (from the remaining FICO categories) have lower PRSM.
--   Total amount owed to the credit union has no practical effect on PRSM.
--   Stress has a strong positive effect on PRSM.
--   Women-owned businesses have a higher PRSM than otherwise businesses.
--   Compared to corporations, partnership and limited liability corporation (LLC) business structures have higher PRSM. On the other hand, sole proprietorship does not have discernible effect on PRSM.
--   The number of months for which the business has been open has an negative impact on PRSM.
-
-
-## Result and Interpretation - Interactions
-
--   The negative effects of lower FICO categories are decreased if the business is women-owned.
--   For the excellent and very good FICO businesess, older businesses perform less than the good FICO businesses.
--   Women-owned businesses tend to have more stress than others.
--   The LLC corporate structure does not perform well if the business is owned by women.
--   The older the corporations are, the more beneficial they are compared to LLCs.
-
-## Outlines Avenues for Future Development or Improvement
--   We may conduct LASSO first rather than stepwise regression to estimate the effect of Num_Delinquent in the future.
--   We may consider a different criteria for stepwise regression such as Bayesian Information Criterion (BIC) instead of AIC in the future.
--   We may consider various NAICS subgroups for the predictors rather than considering only sectors.

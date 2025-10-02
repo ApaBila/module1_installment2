@@ -46,11 +46,16 @@ get_mode <- function(categorical_x) {
   mode <- names(which.max(table(categorical_x)))[1]
 }
 
-installment2_id01$FICO <- relevel(installment2_id01$FICO, ref = "Good")
-installment2_id01$CorpStructure <- relevel(installment2_id01$CorpStructure,
-                                           ref = get_mode(installment2_id01$CorpStructure))
+installment2_id01$FICO <- relevel(installment2_id01$FICO, 
+                                  ref = get_mode(installment2_id01$FICO))
 installment2_id01$WomanOwned <- relevel(installment2_id01$WomanOwned,
                                         ref = get_mode(installment2_id01$WomanOwned))
+installment2_id01$CorpStructure <- relevel(installment2_id01$CorpStructure,
+                                           ref = get_mode(installment2_id01$CorpStructure))
+installment2_id01$NAICS <- relevel(installment2_id01$NAICS,
+                                           ref = get_mode(installment2_id01$NAICS))
+
+
 
 installment2_id01 %>% tbl_summary(
     statistic = list(
