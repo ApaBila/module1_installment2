@@ -1,7 +1,6 @@
 ---
-title: "STAT 628 Credit Risk Project: Installment 2 (executive)"
+title: "Executive Summary: STAT 628 Credit Risk Project, Installment 2"
 author: "Bohyoon Lee and Salsabila Mahdi"
-date: last-modified
 format: pdf
 geometry:
   - margin=1in
@@ -11,7 +10,7 @@ geometry:
 #| label: setup
 #| echo: false
 #| warning: false
-
+#| 
 rm(list = ls())
 
 library(dplyr)
@@ -21,55 +20,96 @@ library(glmnet)
 library(ggplot2)
 library(knitr)
 library(gtsummary)
+library(kableExtra)
+knitr::opts_chunk$set(echo = FALSE)
 ```
 
-```{r load_clean, echo=FALSE}
+
+
+```{r load_clean, warning=FALSE}
 installment2_id01 <- read.csv("installment2_id01.csv")
 
-# make NAICS, WomanOwned, FICO categorical variables
-
-installment2_id01 = installment2_id01 %>%
+# Categorical Variable Processing
+installment2_id01 <- installment2_id01 %>%
   mutate(NAICS = as.factor(substr(NAICS, 1, 2)),
          WomanOwned = as.factor(WomanOwned),
-#         Num_Delinquent = as.factor(Num_Delinquent),
-#         Num_CreditLines = as.factor(Num_CreditLines),
-         FICO = case_when(
+         CorpStructure = as.factor(CorpStructure),
+         FICO = as.factor(case_when(
            (300 <= FICO)&(FICO <= 579) ~ "Poor",
            (580 <= FICO)&(FICO <= 669) ~ "Fair",
            (670 <= FICO)&(FICO <= 739) ~ "Good",
            (740 <= FICO)&(FICO <= 799) ~ "Very Good",
            (800 <= FICO)&(FICO <= 850) ~ "Excellent",
-         ))
+         )))
+
 
 ```
 
-```{r remove_outliers, warning=FALSE, echo=FALSE}
-installment2_id01_clean <- subset(installment2_id01, PRSM > 0 & PRSM < 2)
+
+
+
+```{r remove_outliers, warning=FALSE}
+installment2_id01_clean <- subset(installment2_id01, PRSM > 0 & PRSM <= 2)
+installment2_id01_summary <- installment2_id01_clean %>% 
+  summarise(`min` = min(PRSM),
+            `median` = median(PRSM),
+            `mean` = mean(PRSM),
+            `max` = max(PRSM))
 ```
 
-```{r transform, warning=FALSE, echo=FALSE}
+
+
+```{r relevel}
+get_mode <- function(categorical_x) {mode <- names(which.max(table(categorical_x)))[1]}
+installment2_id01_clean$FICO <- relevel(installment2_id01_clean$FICO, 
+                                  ref = get_mode(installment2_id01_clean$FICO))
+installment2_id01_clean$WomanOwned <- relevel(installment2_id01_clean$WomanOwned,
+                                        ref = get_mode(installment2_id01_clean$WomanOwned))
+installment2_id01_clean$CorpStructure <- relevel(installment2_id01_clean$CorpStructure,
+                                           ref = get_mode(installment2_id01_clean$CorpStructure))
+installment2_id01_clean$NAICS <- relevel(installment2_id01_clean$NAICS,
+                                           ref = get_mode(installment2_id01_clean$NAICS))
+```
+
+
+
+
+
+```{r transform, warning=FALSE}
+
 
 # Transformations from boxTidwell
-boxTidwell_results <- boxTidwell(PRSM ~ TotalAmtOwed + Volume + Stress + Num_Delinquent + Num_CreditLines + Months,
-          data = installment2_id01_clean)
-
+boxTidwell_results <- boxTidwell(PRSM ~ TotalAmtOwed + Volume + Stress + 
+                                   Num_Delinquent + Num_CreditLines + Months,
+                                 data = installment2_id01_clean)
 lambda_months <- boxTidwell_results$result[c("Months"),c("MLE of lambda")]
 lambda_num_delinquent <- boxTidwell_results$result[c("Num_Delinquent"),c("MLE of lambda")]
 
-transformed_model <- lm(PRSM ~ . - Months + I(Months^(lambda_months)) - Num_Delinquent + I(Num_Delinquent^(lambda_num_delinquent)),
-                       data = installment2_id01_clean)
 ```
 
-```{r rm_var, warning=FALSE, echo=FALSE}
+
+```{r transform_model, warning=FALSE}
+transformed_model <- lm(PRSM ~ . - Months + I(Months^(lambda_months)) -
+                          Num_Delinquent + I(Num_Delinquent^(lambda_num_delinquent)),
+                       data = installment2_id01_clean)
+
+```
+
+
+
+```{r rm_var, warning=FALSE}
 # Step Model
 step_model <- step(transformed_model, trace = 0, direction = "both")
+
 ```
 
-```{r interaction_lasso, echo=FALSE}
+
+
+```{r interaction_lasso, warning=FALSE}
 # Find interactions using LASSO
 installment2_id01_clean$Months_transformed =
   (installment2_id01_clean$Months)^(lambda_months)
-x <- model.matrix(PRSM ~ .^2, 
+x <- model.matrix(PRSM ~ .^2, # Creates all the two way interactions
                   data = installment2_id01_clean[,c("PRSM", "FICO",
                                                     "TotalAmtOwed","Stress",
                                                     "WomanOwned", "CorpStructure",
@@ -82,8 +122,17 @@ lasso_coeffs <- coef(cv_lasso_interactions, s = best_lambda)
 
 threshold <- 0.001
 significant_terms <- lasso_coeffs[abs(lasso_coeffs[,1]) > threshold, , drop = FALSE]
+```
 
-# potential interactions: FICO:Stress, FICO:WomanOwned, FICO:CorpStructure, FICO:Months_transformed, Stress:WomanOwned, Stress:CorpStructure, WomanOwned:CorpStructure, WomanOwned:Months_transformed, CorpStructure:Months_transformed, FICO:NAICS, WomanOwned:NAICS, CorpStructure:NAICS, Months_transformed:NAICS, Stress:NAICS
+
+
+```{r interaction_model, warning=FALSE}
+# Potential interactions: FICO:Stress, FICO:WomanOwned,
+# FICO:CorpStructure, FICO:Months_transformed, Stress:WomanOwned, 
+# Stress:CorpStructure, WomanOwned:CorpStructure, 
+# WomanOwned:Months_transformed, CorpStructure:Months_transformed, 
+# FICO:NAICS, WomanOwned:NAICS, CorpStructure:NAICS, 
+# Months_transformed:NAICS, Stress:NAICS.
 
 interact_model = lm(PRSM ~. + FICO:Stress + FICO:WomanOwned + FICO:CorpStructure 
                     + FICO:Months_transformed + Stress:WomanOwned 
@@ -95,7 +144,7 @@ interact_model = lm(PRSM ~. + FICO:Stress + FICO:WomanOwned + FICO:CorpStructure
                                                     "TotalAmtOwed","Stress",
                                                     "WomanOwned", "CorpStructure",
                                                     "Months_transformed", "NAICS")])
-step_interact_model = step(interact_model, trace = 0, direction = "both")
+
 
 # NAICS is not statistically significant; remove NAICS
 interact_model_final = lm(PRSM ~. + FICO:Stress + FICO:WomanOwned + FICO:CorpStructure 
@@ -107,43 +156,52 @@ interact_model_final = lm(PRSM ~. + FICO:Stress + FICO:WomanOwned + FICO:CorpStr
                                                     "WomanOwned", "CorpStructure",
                                                     "Months_transformed")])
 step_interact_final = step(interact_model_final, trace = 0, direction = "both")
-
 ```
 
-```{r baseline, echo=FALSE}
-newdata<-installment2_id01_clean[1,]
 
-newdata[,c("FICO")] <- "Good"
+
+
+```{r baseline, warning=FALSE}
+newdata<-installment2_id01_clean[1, 2:ncol(installment2_id01_clean)]
+newdata[,c("FICO")] <- get_mode(installment2_id01_clean$FICO)
 newdata[,c("TotalAmtOwed")] <- median(installment2_id01_clean$TotalAmtOwed)
 newdata[,c("Stress")] <- median(installment2_id01_clean$Stress)
-newdata[,c("WomanOwned")] <- "0"
-newdata[,c("CorpStructure")] <- "LLC"
-newdata[,c("Months_transformed")] <- median(installment2_id01_clean$Months_transformed)
-
-predicted_PRSM <- as.data.frame(round(predict(step_interact_final, 
-        newdata=newdata), 8))
+newdata[,c("WomanOwned")] <- get_mode(installment2_id01_clean$WomanOwned)
+newdata[,c("CorpStructure")] <- get_mode(installment2_id01_clean$CorpStructure)
+newdata[,c("Months")] <- median(installment2_id01_clean$Months)
+newdata[,c("Months_transformed")] <- median(installment2_id01_clean$Months)^lambda_months
 ```
 
-Our analysis of credit risk, measured here by the PRSM score, reveals that a borrower's risk profile is not determined by a single characteristic but a complex interplay of characteristics. The key characteristics are the business's FICO score, its financial stress level, ownership structure (e.g., woman-owned, corporate structure), and months of operation.
 
--   Compared to borrowers with the Excellent FICO (credit) score, all other borrowers (from the remaining FICO categories) have lower PRSM.
--   Total amount owed to the credit union has no practical effect on PRSM.
--   Stress has a strong positive effect on PRSM.
--   Women-owned businesses have a higher PRSM than otherwise businesses.
--   Compared to corporations, partnership and limited liability corporation (LLC) business structures have higher PRSM. On the other hand, sole proprietorship does not have discernible effect on PRSM.
--   The number of months for which the business has been open has an negative impact on PRSM.
--   The negative effects of lower FICO categories are decreased if the business is women-owned.
--   TODO: FICO:Months
--   TODO: Stress:WomanOwned1 Women-owned businesses tend to have more monthly garnishment to the expected volume of credit card transactions than others.
--   The LLC corporate structure does not perform well if the business is owned by women.
--   TODO: CorpStructure:Month_transformed
 
-The baseline borrower has a Good FICO score, \$`r format(median(installment2_id01_clean$TotalAmtOwed),big.mark = ",")` of total amount owed, and `r round(median(installment2_id01_clean$Stress),2)` of stress, is not a woman, has a business structured as a LLC, and has opened the business for `r median(installment2_id01_clean$Months)` months. The predicted PRSM is `r round(predicted_PRSM,3)`
+To better understand repayment performance of small business borrowers, we analyzed historical loan data to identify the key factors influencing their **Performance Ratio at Six Months (PRSM)**. Our findings confirm several of the credit union's beliefs and reveal how different borrower characteristics interact to affect loan performance.
 
-TODO: final summary
+We've defined a **baseline borrower** to provide a clear point of comparison. This borrower has the most common characteristics in the dataset: a "Good" FICO score, is not woman-owned, is structured as an LLC, has been in business for 18 months, and has a financial "Stress" ratio of 0.18. This baseline borrower is predicted to have a **PRSM of 0.82**, meaning they are on track.
+
+Main Drivers of Loan Performance:
+
+-   **FICO Score:** Borrowers with **"Excellent"** or **"Very Good"** scores tend to be significantly ahead of schedule compared to those with "Good" scores. Conversely, those with "Fair" scores tend to fall behind.
+
+-   **Corporate Structure:** As the credit union suspected, corporate structure matters. Businesses structured as **Corporations**, **Sole Proprietorships**, or **Partnerships** all tend to perform worse than LLCs, suggesting they may represent a higher credit risk.
+
+-   **Business Age:** Performance improves the longer a business has been in operation, with the most significant gains occurring in its early years.
+
+-   **Woman-Owned Businesses:** In line with the credit union's belief, woman-owned businesses are indeed more likely to pay off their loans on time.
+
+Important Interactions Between Factors:
+
+
+-   **Woman Ownership and Corporate Structure:** The repayment gap seen between LLCs and other business structures is much smaller for woman-owned businesses. 
+
+-   **Business Age and FICO Score:** The positive effect of a business being open longer is even more pronounced for borrowers with **"Excellent"** and **"Very Good"** FICO scores. 
+
+-   **Woman Ownership and FICO Score:** The performance boost from being a woman-owned business also depends on the owner's FICO score. For woman-owned businesses, an **"Excellent"** FICO score provides an additional performance lift, while "Fair" or "Poor" scores reduce the advantage.
+
+
 
 | Contributions | Bohyoon Lee | Salsabila Mahdi |
 |---------------|-------------|-----------------|
-|               |             |                 |
-|               |             |                 |
-|               |             |                 |
+|               |     Data Cleaning        |         Modeling        |
+|               |       Predictions      |           Graphs      |
+
+Those sort of represent who started/finished what, but we worked together a lot, see here: https://github.com/ApaBila/module1_installment2
